@@ -82,3 +82,58 @@ export function subscribeTeamMessages(onMessage) {
     supabase.removeChannel(channel);
   };
 }
+
+export async function fetchWebsiteChatConversations() {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('website_chat_conversations')
+    .select('*,messages:website_chat_messages(*)')
+    .order('last_activity_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createWebsiteChatReply(conversationId, body, user) {
+  if (!supabase) return null;
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('website_chat_messages')
+    .insert({
+      conversation_id: conversationId,
+      author_type: 'team',
+      author_id: user.id,
+      author_name: user.name,
+      author_email: user.email,
+      body: body.trim(),
+      created_at: now
+    })
+    .select()
+    .single();
+  if (error) throw error;
+
+  const { error: updateError } = await supabase
+    .from('website_chat_conversations')
+    .update({
+      status: 'pending',
+      assigned_to: user.id,
+      assigned_to_name: user.name,
+      updated_at: now,
+      last_activity_at: now
+    })
+    .eq('id', conversationId);
+  if (updateError) throw updateError;
+  return data;
+}
+
+export function subscribeWebsiteChats(onChange) {
+  if (!supabase) return () => {};
+  const channel = supabase
+    .channel('website-chat-for-team-inbox')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'website_chat_conversations' }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'website_chat_messages' }, onChange)
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}

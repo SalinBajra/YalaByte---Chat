@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   createTeamMessage,
+  createWebsiteChatReply,
   fetchTeamMessages,
+  fetchWebsiteChatConversations,
   isSupabaseConfigured,
   subscribeTeamMessages,
+  subscribeWebsiteChats,
   supabase,
   toChatUser,
   upsertChatProfile
@@ -202,6 +205,51 @@ function displayTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(date);
+}
+
+function relativeTime(value) {
+  if (!value) return 'Now';
+  const diff = Date.now() - new Date(value).getTime();
+  if (Number.isNaN(diff) || diff < 60000) return 'Now';
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  return 'Earlier';
+}
+
+function mapWebsiteConversation(item) {
+  const messages = [...(item.messages || [])].sort((left, right) => new Date(left.created_at) - new Date(right.created_at));
+  return {
+    id: `website-${item.id}`,
+    dbId: item.id,
+    sourceType: 'website-chat',
+    customer: item.customer_name,
+    company: 'Website visitor',
+    email: item.customer_email,
+    phone: item.customer_phone || '',
+    channel: 'Website',
+    subject: item.subject || 'Website chat',
+    status: item.status === 'resolved' ? 'Resolved' : item.status === 'pending' ? 'Pending' : 'Open',
+    priority: item.priority === 'high' ? 'High' : item.priority === 'low' ? 'Low' : 'Medium',
+    assignee: item.assigned_to_name || 'Unassigned',
+    lastSeen: relativeTime(item.last_activity_at || item.updated_at || item.created_at),
+    waitTime: relativeTime(item.created_at),
+    source: item.source_path || 'Website chat',
+    location: 'Website',
+    labels: ['Website chat'],
+    revenue: 'New inquiry',
+    sentiment: 'New',
+    messages: messages.map((message) => ({
+      id: message.id,
+      type: message.author_type === 'team' ? 'agent' : 'customer',
+      author: message.author_name,
+      time: displayTime(message.created_at),
+      body: message.body
+    })),
+    notes: ['Client started this conversation from the website chat widget.'],
+    events: [`Source: ${item.source_path || 'Website'}`]
+  };
 }
 
 function Icon({ name }) {
@@ -776,6 +824,7 @@ export default function ChatApp() {
   const [authReady, setAuthReady] = useState(false);
   const [activeView, setActiveView] = useState('Inbox');
   const [conversations, setConversations] = useState(seedConversations);
+  const [websiteConversations, setWebsiteConversations] = useState([]);
   const [activeId, setActiveId] = useState(seedConversations[0].id);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('Open');
@@ -842,30 +891,75 @@ export default function ChatApp() {
     if (!supabase) window.localStorage.setItem(TEAM_MESSAGES_KEY, JSON.stringify(teamMessages));
   }, [teamMessages]);
 
+  useEffect(() => {
+    if (!currentUser || !supabase) {
+      setWebsiteConversations([]);
+      return undefined;
+    }
+
+    let active = true;
+    const loadWebsiteChats = () => {
+      fetchWebsiteChatConversations()
+        .then((items) => {
+          if (active) setWebsiteConversations(items.map(mapWebsiteConversation));
+        })
+        .catch((error) => {
+          if (active) setTeamChatError(`Website chats could not load: ${error.message}`);
+        });
+    };
+
+    loadWebsiteChats();
+    const unsubscribe = subscribeWebsiteChats(loadWebsiteChats);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [currentUser?.id]);
+
+  const inboxConversations = useMemo(() => {
+    const websiteIds = new Set(websiteConversations.map((conversation) => conversation.id));
+    return [
+      ...websiteConversations,
+      ...conversations.filter((conversation) => !websiteIds.has(conversation.id))
+    ];
+  }, [conversations, websiteConversations]);
+
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase();
-    return conversations.filter((conversation) => {
+    return inboxConversations.filter((conversation) => {
       const matchesStatus = status === 'All' || conversation.status === status;
       const matchesChannel = channel === 'All' || conversation.channel === channel;
       const text = `${conversation.customer} ${conversation.company} ${conversation.subject} ${conversation.email}`.toLowerCase();
       return matchesStatus && matchesChannel && (!search || text.includes(search));
     });
-  }, [channel, conversations, query, status]);
+  }, [channel, inboxConversations, query, status]);
 
-  const activeConversation = conversations.find((conversation) => conversation.id === activeId) || filtered[0] || conversations[0];
+  const activeConversation = inboxConversations.find((conversation) => conversation.id === activeId) || filtered[0] || inboxConversations[0];
 
   function updateConversation(id, changes) {
     setConversations((items) => items.map((item) => (item.id === id ? { ...item, ...changes } : item)));
   }
 
-  function addMessage(type) {
+  async function addMessage(type) {
     if (!draft.trim()) return;
+    const body = draft.trim();
+    if (type === 'agent' && activeConversation?.sourceType === 'website-chat' && supabase) {
+      setDraft('');
+      try {
+        await createWebsiteChatReply(activeConversation.dbId, body, currentUser);
+      } catch (error) {
+        setTeamChatError(`Reply was not saved: ${error.message}`);
+        setDraft(body);
+      }
+      return;
+    }
+
     const message = {
       id: `m-${Date.now()}`,
       type,
       author: type === 'note' ? 'Team note' : 'YalaByte Team',
       time: 'Now',
-      body: draft.trim()
+      body
     };
     setConversations((items) => items.map((item) => (
       item.id === activeConversation.id
@@ -913,9 +1007,9 @@ export default function ChatApp() {
     setCurrentUser(null);
   }
 
-  const openCount = conversations.filter((conversation) => conversation.status === 'Open').length;
-  const pendingCount = conversations.filter((conversation) => conversation.status === 'Pending').length;
-  const unassignedCount = conversations.filter((conversation) => conversation.assignee === 'Unassigned').length;
+  const openCount = inboxConversations.filter((conversation) => conversation.status === 'Open').length;
+  const pendingCount = inboxConversations.filter((conversation) => conversation.status === 'Pending').length;
+  const unassignedCount = inboxConversations.filter((conversation) => conversation.assignee === 'Unassigned').length;
 
   if (!authReady) {
     return (
