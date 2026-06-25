@@ -40,6 +40,32 @@ export async function upsertChatProfile(user) {
   return data;
 }
 
+export async function fetchCrmTeamMembers() {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('team_members')
+    .select('user_id,name,email,role,status,avatar_url,last_seen_at')
+    .order('name');
+  if (error) throw error;
+  return data || [];
+}
+
+export function subscribeCrmTeamMembers(onChange) {
+  if (!supabase) return () => {};
+  const channel = supabase
+    .channel('crm-team-members-for-chat')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'team_members' },
+      onChange
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
 export async function fetchTeamMessages() {
   if (!supabase) return [];
   const { data, error } = await supabase
