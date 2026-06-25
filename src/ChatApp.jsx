@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   createTeamMessage,
-  fetchCrmTeamMembers,
   fetchTeamMessages,
   isSupabaseConfigured,
-  subscribeCrmTeamMembers,
   subscribeTeamMessages,
   supabase,
   toChatUser,
@@ -15,15 +13,9 @@ const ALLOWED_EMAIL_DOMAIN = 'yalabyte.com';
 const SESSION_KEY = 'yalabyte-chat-session';
 const ACCOUNTS_KEY = 'yalabyte-chat-accounts';
 const TEAM_MESSAGES_KEY = 'yalabyte-chat-team-messages';
-const fallbackTeamMembers = [
-  { user_id: 'local-salin', name: 'Salin', email: 'salin@yalabyte.com', role: 'admin', status: 'available' },
-  { user_id: 'local-anish', name: 'Anish', email: 'anish@yalabyte.com', role: 'member', status: 'available' },
-  { user_id: 'local-prabin', name: 'Prabin', email: 'prabin@yalabyte.com', role: 'member', status: 'busy' },
-  { user_id: 'local-sujan', name: 'Sujan', email: 'sujan@yalabyte.com', role: 'member', status: 'away' }
-];
+const teammates = ['Unassigned', 'Salin', 'Anish', 'Prabin', 'Sujan'];
 const statuses = ['Open', 'Pending', 'Resolved'];
 const channels = ['All', 'Website', 'Messenger', 'WhatsApp', 'Email'];
-const chatInviteUrl = 'https://chat.yalabyte.com';
 
 const seedConversations = [
   {
@@ -210,23 +202,6 @@ function displayTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(date);
-}
-
-function inviteSubject() {
-  return 'Join YalaByte Chat';
-}
-
-function inviteBody(memberName = 'team') {
-  return `Hi ${memberName},\n\nPlease join the YalaByte Chat workspace here:\n${chatInviteUrl}\n\nUse your @yalabyte.com account to sign in.\n\nThanks,\nYalaByte Team`;
-}
-
-function inviteUrl(email, name) {
-  return `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(inviteSubject())}&body=${encodeURIComponent(inviteBody(name))}`;
-}
-
-function inviteAllUrl(teamMembers) {
-  const emails = teamMembers.map((member) => member.email).filter(Boolean).join(',');
-  return `mailto:${encodeURIComponent(emails)}?subject=${encodeURIComponent(inviteSubject())}&body=${encodeURIComponent(inviteBody())}`;
 }
 
 function Icon({ name }) {
@@ -647,9 +622,7 @@ function Thread({ conversation, onSend, onNote, draft, setDraft, mode, setMode }
   );
 }
 
-function DetailPanel({ conversation, teamMembers, updateConversation }) {
-  const assignees = ['Unassigned', ...teamMembers.map((member) => member.name).filter(Boolean)];
-
+function DetailPanel({ conversation, updateConversation }) {
   return (
     <aside className="hidden w-[320px] shrink-0 border-l border-slate-200 bg-white xl:flex xl:min-h-0 xl:flex-col">
       <div className="border-b border-slate-200 p-5">
@@ -680,7 +653,7 @@ function DetailPanel({ conversation, teamMembers, updateConversation }) {
             onChange={(event) => updateConversation(conversation.id, { assignee: event.target.value })}
             value={conversation.assignee}
           >
-            {assignees.map((member) => <option key={member}>{member}</option>)}
+            {teammates.map((member) => <option key={member}>{member}</option>)}
           </select>
           <select
             className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-ink"
