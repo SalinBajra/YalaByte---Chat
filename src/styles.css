@@ -15,6 +15,13 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+.login-shell {
+  background:
+    radial-gradient(circle at 15% 20%, rgba(19, 200, 222, 0.18), transparent 32rem),
+    radial-gradient(circle at 85% 80%, rgba(19, 200, 222, 0.09), transparent 28rem),
+    #06111f;
+}
+
 .chat-shell {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(238, 243, 248, 0.96)),

@@ -707,7 +707,73 @@ function DetailPanel({ conversation, updateConversation }) {
   );
 }
 
+function TeamChat({ currentUser, messages, draft, setDraft, onSend, error }) {
+  return (
+    <section className="flex min-h-0 flex-1 flex-col bg-white">
+      <header className="border-b border-slate-200 px-4 py-4 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-cyan-700">Internal</p>
+            <h1 className="mt-1 text-xl font-extrabold tracking-tight text-ink">Team chat</h1>
+            <p className="mt-1 text-sm text-slate-500">Talk with the YalaByte team without mixing internal messages into customer replies.</p>
+          </div>
+          <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-extrabold text-emerald-700">
+            {isSupabaseConfigured ? 'Realtime ready' : 'Local demo mode'}
+          </span>
+        </div>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-5 sm:px-6">
+        <div className="mx-auto max-w-4xl space-y-4">
+          {messages.map((message) => {
+            const own = message.author_id === currentUser?.id || message.author_email === currentUser?.email;
+            return (
+              <div className={cx('flex', own && 'justify-end')} key={message.id}>
+                <article className={cx('max-w-[82%] rounded-2xl border px-4 py-3 shadow-sm', own ? 'border-cyan-100 bg-cyan-50 text-ink' : 'border-slate-200 bg-white text-slate-800')}>
+                  <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold">
+                    <span>{message.author_name}</span>
+                    <span className="font-semibold text-slate-400">{displayTime(message.created_at)}</span>
+                  </div>
+                  <p className="mt-2 whitespace-pre-line text-sm leading-6">{message.body}</p>
+                </article>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <footer className="border-t border-slate-200 bg-white p-4">
+        <div className="mx-auto max-w-4xl">
+          {error ? <p className="mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">{error}</p> : null}
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+            <textarea
+              className="min-h-20 w-full resize-none border-0 text-sm leading-6 text-ink outline-none placeholder:text-slate-400"
+              onChange={(event) => setDraft(event.target.value)}
+              placeholder="Message the team..."
+              value={draft}
+            />
+            <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+              <p className="text-xs font-semibold text-slate-400">Signed in as {currentUser?.email}</p>
+              <button
+                className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={!draft.trim()}
+                onClick={onSend}
+                type="button"
+              >
+                <Icon name="send" />
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      </footer>
+    </section>
+  );
+}
+
 export default function ChatApp() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   const [activeView, setActiveView] = useState('Inbox');
   const [conversations, setConversations] = useState(seedConversations);
   const [activeId, setActiveId] = useState(seedConversations[0].id);
@@ -716,6 +782,65 @@ export default function ChatApp() {
   const [channel, setChannel] = useState('All');
   const [draft, setDraft] = useState('');
   const [mode, setMode] = useState('Reply');
+  const [teamMessages, setTeamMessages] = useState(readLocalTeamMessages);
+  const [teamDraft, setTeamDraft] = useState('');
+  const [teamChatError, setTeamChatError] = useState('');
+
+  useEffect(() => {
+    if (!supabase) {
+      setCurrentUser(readLocalSession());
+      setAuthReady(true);
+      return undefined;
+    }
+
+    const acceptSession = (session) => {
+      const user = toChatUser(session?.user);
+      if (user && !isAllowedTeamEmail(user.email)) {
+        setCurrentUser(null);
+        supabase.auth.signOut();
+      } else {
+        setCurrentUser(user);
+      }
+      setAuthReady(true);
+    };
+
+    supabase.auth.getSession().then(({ data }) => acceptSession(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => acceptSession(session));
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return undefined;
+    if (!supabase) {
+      window.localStorage.setItem(TEAM_MESSAGES_KEY, JSON.stringify(teamMessages));
+      return undefined;
+    }
+
+    let active = true;
+    upsertChatProfile(currentUser)
+      .then(() => fetchTeamMessages())
+      .then((messages) => {
+        if (active) setTeamMessages(messages.length ? messages : seedTeamMessages);
+      })
+      .catch((error) => {
+        if (active) setTeamChatError(`Team chat database needs setup: ${error.message}`);
+      });
+
+    const unsubscribe = subscribeTeamMessages((message) => {
+      setTeamMessages((items) => (
+        items.some((item) => item.id === message.id) ? items : [...items, message]
+      ));
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!supabase) window.localStorage.setItem(TEAM_MESSAGES_KEY, JSON.stringify(teamMessages));
+  }, [teamMessages]);
 
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -750,22 +875,75 @@ export default function ChatApp() {
     setDraft('');
   }
 
+  async function sendTeamMessage() {
+    if (!teamDraft.trim() || !currentUser) return;
+    const body = teamDraft.trim();
+    setTeamDraft('');
+    setTeamChatError('');
+
+    if (!supabase) {
+      setTeamMessages((items) => [
+        ...items,
+        {
+          id: createId('team'),
+          author_id: currentUser.id,
+          author_name: currentUser.name,
+          author_email: currentUser.email,
+          body,
+          created_at: new Date().toISOString()
+        }
+      ]);
+      return;
+    }
+
+    try {
+      const message = await createTeamMessage(body, currentUser);
+      setTeamMessages((items) => (
+        items.some((item) => item.id === message.id) ? items : [...items, message]
+      ));
+    } catch (error) {
+      setTeamChatError(`Message was not saved: ${error.message}`);
+      setTeamDraft(body);
+    }
+  }
+
+  async function signOut() {
+    if (supabase) await supabase.auth.signOut();
+    window.localStorage.removeItem(SESSION_KEY);
+    setCurrentUser(null);
+  }
+
   const openCount = conversations.filter((conversation) => conversation.status === 'Open').length;
   const pendingCount = conversations.filter((conversation) => conversation.status === 'Pending').length;
   const unassignedCount = conversations.filter((conversation) => conversation.assignee === 'Unassigned').length;
 
+  if (!authReady) {
+    return (
+      <main className="login-shell flex min-h-screen items-center justify-center px-5 text-white">
+        <div className="text-center">
+          <Brand inverted />
+          <p className="mt-6 text-sm font-semibold text-slate-300">Checking secure access...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!currentUser) {
+    return <LoginGate onUnlock={setCurrentUser} />;
+  }
+
   return (
     <main className="chat-shell flex min-h-screen flex-col lg:flex-row">
-      <Sidebar activeView={activeView} setActiveView={setActiveView} />
+      <Sidebar activeView={activeView} currentUser={currentUser} onSignOut={signOut} setActiveView={setActiveView} />
 
       <section className="flex min-h-0 flex-1 flex-col">
         <header className="border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur sm:px-5">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-cyan-700">{activeView}</p>
-              <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-ink">Customer conversations</h2>
+              <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-ink">{activeView === 'Team Chat' ? 'Team communication' : 'Customer conversations'}</h2>
             </div>
-            <div className="flex overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className={cx('overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm', activeView === 'Team Chat' ? 'hidden lg:flex' : 'flex')}>
               <Metric label="Open" value={openCount} icon="chat" />
               <Metric label="Pending" value={pendingCount} icon="clock" />
               <Metric label="Unassigned" value={unassignedCount} icon="user" />
@@ -773,6 +951,18 @@ export default function ChatApp() {
           </div>
         </header>
 
+        {activeView === 'Team Chat' ? (
+          <div className="flex min-h-0 flex-1 overflow-hidden border-t border-white/80 bg-white/70">
+            <TeamChat
+              currentUser={currentUser}
+              draft={teamDraft}
+              error={teamChatError}
+              messages={teamMessages}
+              onSend={sendTeamMessage}
+              setDraft={setTeamDraft}
+            />
+          </div>
+        ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-white/80 bg-white/70 lg:flex-row">
           <aside className="flex h-[42vh] shrink-0 flex-col border-b border-slate-200 bg-white lg:h-auto lg:w-[390px] lg:border-b-0 lg:border-r">
             <div className="border-b border-slate-200 p-4">
@@ -815,6 +1005,7 @@ export default function ChatApp() {
             </>
           ) : null}
         </div>
+        )}
       </section>
     </main>
   );
