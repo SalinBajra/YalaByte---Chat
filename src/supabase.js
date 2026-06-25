@@ -51,6 +51,28 @@ export async function fetchTeamMessages() {
   return data || [];
 }
 
+export async function fetchChatProfiles() {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('chat_profiles')
+    .select('id,full_name,email,last_seen_at,created_at')
+    .order('full_name', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export function subscribeChatProfiles(onChange) {
+  if (!supabase) return () => {};
+  const channel = supabase
+    .channel('chat-team-profiles')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_profiles' }, onChange)
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
 export async function createTeamMessage(body, user) {
   if (!supabase) return null;
   const { data, error } = await supabase
@@ -65,6 +87,56 @@ export async function createTeamMessage(body, user) {
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function fetchDirectMessages(currentUserId) {
+  if (!supabase || !currentUserId) return [];
+  const { data, error } = await supabase
+    .from('team_direct_messages')
+    .select('*')
+    .or(`sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId}`)
+    .order('created_at', { ascending: true })
+    .limit(300);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function createDirectMessage(body, currentUser, teammate) {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('team_direct_messages')
+    .insert({
+      body: body.trim(),
+      sender_id: currentUser.id,
+      sender_name: currentUser.name,
+      sender_email: currentUser.email,
+      recipient_id: teammate.id,
+      recipient_name: teammate.full_name || teammate.email?.split('@')[0] || 'Team member',
+      recipient_email: teammate.email
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export function subscribeDirectMessages(currentUserId, onMessage) {
+  if (!supabase || !currentUserId) return () => {};
+  const channel = supabase
+    .channel(`team-direct-messages-${currentUserId}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'team_direct_messages' },
+      (payload) => {
+        const message = payload.new;
+        if (message.sender_id === currentUserId || message.recipient_id === currentUserId) onMessage(message);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
 
 export function subscribeTeamMessages(onMessage) {

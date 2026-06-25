@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  createDirectMessage,
   createTeamMessage,
   createWebsiteChatReply,
+  fetchChatProfiles,
+  fetchDirectMessages,
   fetchTeamMessages,
   fetchWebsiteChatConversations,
   isSupabaseConfigured,
+  subscribeChatProfiles,
+  subscribeDirectMessages,
   subscribeTeamMessages,
   subscribeWebsiteChats,
   supabase,
@@ -216,6 +221,16 @@ function relativeTime(value) {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours} hr ago`;
   return 'Earlier';
+}
+
+function profileName(profile) {
+  return profile?.full_name || profile?.name || profile?.email?.split('@')[0] || 'Team member';
+}
+
+function isOnlineProfile(profile) {
+  if (!profile?.last_seen_at) return false;
+  const lastSeen = new Date(profile.last_seen_at).getTime();
+  return Number.isFinite(lastSeen) && Date.now() - lastSeen < 1000 * 60 * 2;
 }
 
 function mapWebsiteConversation(item) {
@@ -755,66 +770,160 @@ function DetailPanel({ conversation, updateConversation }) {
   );
 }
 
-function TeamChat({ currentUser, messages, draft, setDraft, onSend, error }) {
-  return (
-    <section className="flex min-h-0 flex-1 flex-col bg-white">
-      <header className="border-b border-slate-200 px-4 py-4 sm:px-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-cyan-700">Internal</p>
-            <h1 className="mt-1 text-xl font-extrabold tracking-tight text-ink">Team chat</h1>
-            <p className="mt-1 text-sm text-slate-500">Talk with the YalaByte team without mixing internal messages into customer replies.</p>
-          </div>
-          <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-extrabold text-emerald-700">
-            {isSupabaseConfigured ? 'Realtime ready' : 'Local demo mode'}
-          </span>
-        </div>
-      </header>
+function TeamChat({
+  currentUser,
+  directMessages,
+  draft,
+  error,
+  messages,
+  onSend,
+  selectedTeamChat,
+  setDraft,
+  setSelectedTeamChat,
+  teamProfiles
+}) {
+  const selectedProfile = selectedTeamChat === 'room' ? null : teamProfiles.find((profile) => profile.id === selectedTeamChat);
+  const visibleMessages = selectedProfile
+    ? directMessages.filter((message) => (
+        (message.sender_id === currentUser?.id && message.recipient_id === selectedProfile.id)
+        || (message.sender_id === selectedProfile.id && message.recipient_id === currentUser?.id)
+      ))
+    : messages;
+  const onlineCount = teamProfiles.filter(isOnlineProfile).length;
+  const title = selectedProfile ? profileName(selectedProfile) : 'Team room';
+  const subtitle = selectedProfile
+    ? `${isOnlineProfile(selectedProfile) ? 'Online now' : `Last seen ${relativeTime(selectedProfile.last_seen_at)}`} · Private team chat`
+    : 'Shared internal room for the whole YalaByte team';
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-5 sm:px-6">
-        <div className="mx-auto max-w-4xl space-y-4">
-          {messages.map((message) => {
-            const own = message.author_id === currentUser?.id || message.author_email === currentUser?.email;
+  return (
+    <section className="flex min-h-0 flex-1 flex-col bg-white lg:flex-row">
+      <aside className="flex h-[34vh] shrink-0 flex-col border-b border-slate-200 bg-white lg:h-auto lg:w-[320px] lg:border-b-0 lg:border-r">
+        <div className="border-b border-slate-200 p-4">
+          <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-cyan-700">Internal team only</p>
+          <h1 className="mt-1 text-xl font-extrabold tracking-tight text-ink">Team chat</h1>
+          <p className="mt-1 text-sm text-slate-500">Clients never see this area.</p>
+          <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+            <span className="text-xs font-bold text-slate-500">{onlineCount} online</span>
+            <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700">
+              {isSupabaseConfigured ? 'Realtime' : 'Local demo'}
+            </span>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <button
+            className={cx(
+              'mb-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-50',
+              selectedTeamChat === 'room' && 'bg-cyan-50 hover:bg-cyan-50'
+            )}
+            onClick={() => setSelectedTeamChat('room')}
+            type="button"
+          >
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-navy-950 text-xs font-extrabold text-cyanbrand-400">
+              <Icon name="people" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-extrabold text-ink">Team room</span>
+              <span className="block truncate text-xs font-semibold text-slate-500">Everyone internal</span>
+            </span>
+          </button>
+
+          {teamProfiles.map((profile) => {
+            const online = isOnlineProfile(profile);
             return (
-              <div className={cx('flex', own && 'justify-end')} key={message.id}>
-                <article className={cx('max-w-[82%] rounded-2xl border px-4 py-3 shadow-sm', own ? 'border-cyan-100 bg-cyan-50 text-ink' : 'border-slate-200 bg-white text-slate-800')}>
-                  <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold">
-                    <span>{message.author_name}</span>
-                    <span className="font-semibold text-slate-400">{displayTime(message.created_at)}</span>
-                  </div>
-                  <p className="mt-2 whitespace-pre-line text-sm leading-6">{message.body}</p>
-                </article>
-              </div>
+              <button
+                className={cx(
+                  'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-50',
+                  selectedTeamChat === profile.id && 'bg-cyan-50 hover:bg-cyan-50'
+                )}
+                key={profile.id}
+                onClick={() => setSelectedTeamChat(profile.id)}
+                type="button"
+              >
+                <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-navy-950 text-xs font-extrabold text-cyanbrand-400">
+                  {initials(profileName(profile))}
+                  <span className={cx('absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white', online ? 'bg-emerald-500' : 'bg-slate-300')} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-extrabold text-ink">{profileName(profile)}</span>
+                  <span className="block truncate text-xs font-semibold text-slate-500">{online ? 'Online' : `Seen ${relativeTime(profile.last_seen_at)}`}</span>
+                </span>
+              </button>
             );
           })}
         </div>
-      </div>
+      </aside>
 
-      <footer className="border-t border-slate-200 bg-white p-4">
-        <div className="mx-auto max-w-4xl">
-          {error ? <p className="mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">{error}</p> : null}
-          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-            <textarea
-              className="min-h-20 w-full resize-none border-0 text-sm leading-6 text-ink outline-none placeholder:text-slate-400"
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Message the team..."
-              value={draft}
-            />
-            <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-              <p className="text-xs font-semibold text-slate-400">Signed in as {currentUser?.email}</p>
-              <button
-                className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40"
-                disabled={!draft.trim()}
-                onClick={onSend}
-                type="button"
-              >
-                <Icon name="send" />
-                Send
-              </button>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <header className="border-b border-slate-200 px-4 py-4 sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-extrabold tracking-tight text-ink">{title}</h1>
+              <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
             </div>
+            {selectedProfile ? (
+              <span className={cx('rounded-full border px-3 py-1.5 text-xs font-extrabold', isOnlineProfile(selectedProfile) ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500')}>
+                {isOnlineProfile(selectedProfile) ? 'Online' : 'Offline'}
+              </span>
+            ) : null}
+          </div>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-5 sm:px-6">
+          <div className="mx-auto max-w-4xl space-y-4">
+            {visibleMessages.length ? visibleMessages.map((message) => {
+              const own = selectedProfile
+                ? message.sender_id === currentUser?.id
+                : message.author_id === currentUser?.id || message.author_email === currentUser?.email;
+              const author = selectedProfile
+                ? (own ? currentUser?.name : profileName(selectedProfile))
+                : message.author_name;
+              return (
+                <div className={cx('flex', own && 'justify-end')} key={message.id}>
+                  <article className={cx('max-w-[82%] rounded-2xl border px-4 py-3 shadow-sm', own ? 'border-cyan-100 bg-cyan-50 text-ink' : 'border-slate-200 bg-white text-slate-800')}>
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold">
+                      <span>{author}</span>
+                      <span className="font-semibold text-slate-400">{displayTime(message.created_at)}</span>
+                    </div>
+                    <p className="mt-2 whitespace-pre-line text-sm leading-6">{message.body}</p>
+                  </article>
+                </div>
+              );
+            }) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center">
+                <p className="font-extrabold text-ink">No messages yet</p>
+                <p className="mt-1 text-sm text-slate-500">Start the conversation from the box below.</p>
+              </div>
+            )}
           </div>
         </div>
-      </footer>
+
+        <footer className="border-t border-slate-200 bg-white p-4">
+          <div className="mx-auto max-w-4xl">
+            {error ? <p className="mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">{error}</p> : null}
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <textarea
+                className="min-h-20 w-full resize-none border-0 text-sm leading-6 text-ink outline-none placeholder:text-slate-400"
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder={selectedProfile ? `Message ${profileName(selectedProfile)}...` : 'Message the YalaByte team...'}
+                value={draft}
+              />
+              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                <p className="text-xs font-semibold text-slate-400">Signed in as {currentUser?.email}</p>
+                <button
+                  className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  disabled={!draft.trim() || (selectedTeamChat !== 'room' && !selectedProfile)}
+                  onClick={onSend}
+                  type="button"
+                >
+                  <Icon name="send" />
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        </footer>
+      </div>
     </section>
   );
 }
@@ -832,6 +941,9 @@ export default function ChatApp() {
   const [draft, setDraft] = useState('');
   const [mode, setMode] = useState('Reply');
   const [teamMessages, setTeamMessages] = useState(readLocalTeamMessages);
+  const [teamProfiles, setTeamProfiles] = useState([]);
+  const [directMessages, setDirectMessages] = useState([]);
+  const [selectedTeamChat, setSelectedTeamChat] = useState('room');
   const [teamDraft, setTeamDraft] = useState('');
   const [teamChatError, setTeamChatError] = useState('');
 
@@ -866,6 +978,16 @@ export default function ChatApp() {
     }
 
     let active = true;
+    const refreshProfiles = () => {
+      fetchChatProfiles()
+        .then((profiles) => {
+          if (active) setTeamProfiles(profiles.filter((profile) => profile.id !== currentUser.id));
+        })
+        .catch((error) => {
+          if (active) setTeamChatError(`Team list could not load: ${error.message}`);
+        });
+    };
+
     upsertChatProfile(currentUser)
       .then(() => fetchTeamMessages())
       .then((messages) => {
@@ -875,15 +997,37 @@ export default function ChatApp() {
         if (active) setTeamChatError(`Team chat database needs setup: ${error.message}`);
       });
 
-    const unsubscribe = subscribeTeamMessages((message) => {
+    refreshProfiles();
+    fetchDirectMessages(currentUser.id)
+      .then((messages) => {
+        if (active) setDirectMessages(messages);
+      })
+      .catch((error) => {
+        if (active) setTeamChatError(`Direct messages could not load: ${error.message}`);
+      });
+
+    const heartbeat = window.setInterval(() => {
+      upsertChatProfile(currentUser).catch(() => {});
+    }, 30000);
+
+    const unsubscribeTeamMessages = subscribeTeamMessages((message) => {
       setTeamMessages((items) => (
+        items.some((item) => item.id === message.id) ? items : [...items, message]
+      ));
+    });
+    const unsubscribeProfiles = subscribeChatProfiles(refreshProfiles);
+    const unsubscribeDirectMessages = subscribeDirectMessages(currentUser.id, (message) => {
+      setDirectMessages((items) => (
         items.some((item) => item.id === message.id) ? items : [...items, message]
       ));
     });
 
     return () => {
       active = false;
-      unsubscribe();
+      window.clearInterval(heartbeat);
+      unsubscribeTeamMessages();
+      unsubscribeProfiles();
+      unsubscribeDirectMessages();
     };
   }, [currentUser?.id]);
 
@@ -974,6 +1118,9 @@ export default function ChatApp() {
     const body = teamDraft.trim();
     setTeamDraft('');
     setTeamChatError('');
+    const selectedProfile = selectedTeamChat === 'room'
+      ? null
+      : teamProfiles.find((profile) => profile.id === selectedTeamChat);
 
     if (!supabase) {
       setTeamMessages((items) => [
@@ -991,6 +1138,14 @@ export default function ChatApp() {
     }
 
     try {
+      if (selectedProfile) {
+        const message = await createDirectMessage(body, currentUser, selectedProfile);
+        setDirectMessages((items) => (
+          items.some((item) => item.id === message.id) ? items : [...items, message]
+        ));
+        return;
+      }
+
       const message = await createTeamMessage(body, currentUser);
       setTeamMessages((items) => (
         items.some((item) => item.id === message.id) ? items : [...items, message]
@@ -1035,7 +1190,7 @@ export default function ChatApp() {
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-cyan-700">{activeView}</p>
-              <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-ink">{activeView === 'Team Chat' ? 'Team communication' : 'Customer conversations'}</h2>
+              <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-ink">{activeView === 'Team Chat' ? 'Internal team chat' : 'Customer conversations'}</h2>
             </div>
             <div className={cx('overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm', activeView === 'Team Chat' ? 'hidden lg:flex' : 'flex')}>
               <Metric label="Open" value={openCount} icon="chat" />
@@ -1049,11 +1204,15 @@ export default function ChatApp() {
           <div className="flex min-h-0 flex-1 overflow-hidden border-t border-white/80 bg-white/70">
             <TeamChat
               currentUser={currentUser}
+              directMessages={directMessages}
               draft={teamDraft}
               error={teamChatError}
               messages={teamMessages}
               onSend={sendTeamMessage}
+              selectedTeamChat={selectedTeamChat}
               setDraft={setTeamDraft}
+              setSelectedTeamChat={setSelectedTeamChat}
+              teamProfiles={teamProfiles}
             />
           </div>
         ) : (

@@ -17,6 +17,18 @@ create table if not exists public.team_chat_messages (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.team_direct_messages (
+  id uuid primary key default gen_random_uuid(),
+  sender_id uuid not null references auth.users(id) on delete cascade,
+  sender_name text not null default '',
+  sender_email text not null,
+  recipient_id uuid not null references auth.users(id) on delete cascade,
+  recipient_name text not null default '',
+  recipient_email text not null,
+  body text not null check (char_length(trim(body)) > 0),
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.website_chat_conversations (
   id uuid primary key default gen_random_uuid(),
   customer_name text not null,
@@ -46,6 +58,7 @@ create table if not exists public.website_chat_messages (
 
 alter table public.chat_profiles enable row level security;
 alter table public.team_chat_messages enable row level security;
+alter table public.team_direct_messages enable row level security;
 alter table public.website_chat_conversations enable row level security;
 alter table public.website_chat_messages enable row level security;
 
@@ -89,6 +102,27 @@ create policy "YalaByte users can send team messages"
     and author_email ilike '%@yalabyte.com'
   );
 
+drop policy if exists "YalaByte users can read own direct messages" on public.team_direct_messages;
+create policy "YalaByte users can read own direct messages"
+  on public.team_direct_messages
+  for select
+  to authenticated
+  using (
+    (auth.jwt() ->> 'email') ilike '%@yalabyte.com'
+    and (sender_id = auth.uid() or recipient_id = auth.uid())
+  );
+
+drop policy if exists "YalaByte users can send direct messages" on public.team_direct_messages;
+create policy "YalaByte users can send direct messages"
+  on public.team_direct_messages
+  for insert
+  to authenticated
+  with check (
+    sender_id = auth.uid()
+    and sender_email = (auth.jwt() ->> 'email')
+    and sender_email ilike '%@yalabyte.com'
+  );
+
 drop policy if exists "YalaByte users can read website chat conversations" on public.website_chat_conversations;
 create policy "YalaByte users can read website chat conversations"
   on public.website_chat_conversations
@@ -126,6 +160,9 @@ create policy "YalaByte users can reply to website chat messages"
 create index if not exists team_chat_messages_created_at_idx
   on public.team_chat_messages(created_at);
 
+create index if not exists team_direct_messages_participants_created_idx
+  on public.team_direct_messages(sender_id, recipient_id, created_at);
+
 create index if not exists website_chat_conversations_last_activity_idx
   on public.website_chat_conversations(last_activity_at desc);
 
@@ -133,11 +170,24 @@ create index if not exists website_chat_messages_conversation_created_idx
   on public.website_chat_messages(conversation_id, created_at);
 
 do $$
+declare
+  table_name text;
 begin
-  alter publication supabase_realtime add table public.team_chat_messages;
-  alter publication supabase_realtime add table public.website_chat_conversations;
-  alter publication supabase_realtime add table public.website_chat_messages;
+  foreach table_name in array array[
+    'public.team_chat_messages',
+    'public.chat_profiles',
+    'public.team_direct_messages',
+    'public.website_chat_conversations',
+    'public.website_chat_messages'
+  ]
+  loop
+    begin
+      execute format('alter publication supabase_realtime add table %s', table_name);
+    exception
+      when duplicate_object then null;
+      when undefined_object then null;
+    end;
+  end loop;
 exception
-  when duplicate_object then null;
   when undefined_object then null;
 end $$;
