@@ -222,6 +222,15 @@ export async function updateWebsiteChatConversation(conversationId, changes, use
   return data;
 }
 
+export async function convertWebsiteChatToLead(conversationId) {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('convert_website_chat_to_lead', {
+    p_conversation_id: conversationId
+  });
+  if (error) throw error;
+  return data;
+}
+
 export function subscribeWebsiteChats(onChange) {
   if (!supabase) return () => {};
   const channel = supabase

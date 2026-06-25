@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  convertWebsiteChatToLead,
   createDirectMessage,
   createTeamMessage,
   createWebsiteChatReply,
@@ -241,9 +242,11 @@ function mapWebsiteConversation(item) {
     dbId: item.id,
     sourceType: 'website-chat',
     customer: item.customer_name,
-    company: 'Website visitor',
+    company: item.customer_company || 'Website visitor',
     email: item.customer_email,
     phone: item.customer_phone || '',
+    convertedLeadId: item.converted_lead_id || '',
+    convertedAt: item.converted_at || '',
     channel: 'Website',
     subject: item.subject || 'Website chat',
     status: item.status === 'resolved' ? 'Resolved' : item.status === 'pending' ? 'Pending' : 'Open',
@@ -263,7 +266,10 @@ function mapWebsiteConversation(item) {
       time: displayTime(message.created_at),
       body: message.body
     })),
-    notes: ['Client started this conversation from the website chat widget.'],
+    notes: [
+      'Client started this conversation from the website chat widget.',
+      item.converted_lead_id ? `Converted to CRM lead ${item.converted_lead_id}.` : 'Convert to CRM once the opportunity is qualified.'
+    ],
     events: [`Source: ${item.source_path || 'Website'}`]
   };
 }
@@ -696,7 +702,7 @@ function Thread({ conversation, onResolve, onSend, onNote, draft, setDraft, mode
   );
 }
 
-function DetailPanel({ conversation, updateConversation }) {
+function DetailPanel({ conversation, convertingLeadId, onConvertLead, updateConversation }) {
   return (
     <aside className="hidden w-[320px] shrink-0 border-l border-slate-200 bg-white xl:flex xl:min-h-0 xl:flex-col">
       <div className="border-b border-slate-200 p-5">
@@ -742,10 +748,33 @@ function DetailPanel({ conversation, updateConversation }) {
           <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-500">Contact</p>
           <div className="mt-2 space-y-2 text-sm">
             <p className="truncate rounded-xl bg-slate-50 px-3 py-2 font-semibold text-slate-700">{conversation.email}</p>
-            <p className="truncate rounded-xl bg-slate-50 px-3 py-2 font-semibold text-slate-700">{conversation.phone}</p>
+            <p className="truncate rounded-xl bg-slate-50 px-3 py-2 font-semibold text-slate-700">{conversation.phone || 'No phone added'}</p>
+            <p className="truncate rounded-xl bg-slate-50 px-3 py-2 font-semibold text-slate-700">{conversation.company || 'No company added'}</p>
             <p className="truncate rounded-xl bg-slate-50 px-3 py-2 font-semibold text-slate-700">{conversation.location}</p>
           </div>
         </section>
+
+        {conversation.sourceType === 'website-chat' ? (
+          <section>
+            <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-500">CRM</p>
+            {conversation.convertedLeadId ? (
+              <div className="mt-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
+                <p className="text-sm font-extrabold text-emerald-800">Converted lead</p>
+                <p className="mt-1 truncate text-xs font-semibold text-emerald-700">{conversation.convertedLeadId}</p>
+              </div>
+            ) : (
+              <button
+                className="mt-2 w-full rounded-xl bg-navy-950 px-3 py-2.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-navy-800 disabled:cursor-wait disabled:opacity-60"
+                disabled={convertingLeadId === conversation.id}
+                onClick={() => onConvertLead(conversation)}
+                type="button"
+              >
+                {convertingLeadId === conversation.id ? 'Converting...' : 'Convert to CRM lead'}
+              </button>
+            )}
+            <p className="mt-2 text-xs leading-5 text-slate-500">Use this after the chat becomes a real opportunity.</p>
+          </section>
+        ) : null}
 
         <section>
           <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-500">Labels</p>
@@ -958,6 +987,7 @@ export default function ChatApp() {
   const [teamDraft, setTeamDraft] = useState('');
   const [teamChatError, setTeamChatError] = useState('');
   const [websiteChatError, setWebsiteChatError] = useState('');
+  const [convertingLeadId, setConvertingLeadId] = useState('');
 
   useEffect(() => {
     if (!supabase) {
@@ -1123,6 +1153,26 @@ export default function ChatApp() {
   function resolveConversation() {
     if (!activeConversation) return;
     updateConversation(activeConversation.id, { status: 'Resolved' });
+  }
+
+  async function convertConversationToLead(conversation) {
+    if (!conversation?.dbId || conversation.convertedLeadId || !supabase) return;
+    setConvertingLeadId(conversation.id);
+    setWebsiteChatError('');
+    try {
+      const lead = await convertWebsiteChatToLead(conversation.dbId);
+      const leadId = lead?.id || `lead-chat-${conversation.dbId}`;
+      patchConversationInView(conversation.id, {
+        convertedLeadId: leadId,
+        convertedAt: new Date().toISOString(),
+        labels: Array.from(new Set([...(conversation.labels || []), 'CRM lead'])),
+        notes: Array.from(new Set([...(conversation.notes || []), `Converted to CRM lead ${leadId}.`]))
+      });
+    } catch (error) {
+      setWebsiteChatError(`Lead conversion failed: ${error.message}`);
+    } finally {
+      setConvertingLeadId('');
+    }
   }
 
   async function addMessage(type) {
@@ -1301,7 +1351,12 @@ export default function ChatApp() {
                 setDraft={setDraft}
                 setMode={setMode}
               />
-              <DetailPanel conversation={activeConversation} updateConversation={updateConversation} />
+              <DetailPanel
+                conversation={activeConversation}
+                convertingLeadId={convertingLeadId}
+                onConvertLead={convertConversationToLead}
+                updateConversation={updateConversation}
+              />
             </>
           ) : null}
         </div>
