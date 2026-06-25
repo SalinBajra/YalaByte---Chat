@@ -299,7 +299,7 @@ function Brand({ compact = false, inverted = false }) {
       {!compact ? (
         <div className="min-w-0">
           <p className={cx('truncate text-lg font-extrabold tracking-tight', inverted ? 'text-white' : 'text-ink')}>Yala<span className="text-cyanbrand-400">Byte</span></p>
-          <p className={cx('text-[10px] font-bold uppercase tracking-[0.2em]', inverted ? 'text-slate-400' : 'text-slate-500')}>Team Inbox</p>
+          <p className={cx('text-[10px] font-bold uppercase tracking-[0.2em]', inverted ? 'text-slate-400' : 'text-slate-500')}>ChatByte</p>
         </div>
       ) : null}
     </div>
@@ -424,7 +424,7 @@ function LoginGate({ onUnlock }) {
 
     const normalizedEmail = email.trim().toLowerCase();
     if (!isAllowedTeamEmail(normalizedEmail)) {
-      setError('Access denied. Only @yalabyte.com team accounts can use YalaByte Chat.');
+      setError('Access denied. Only @yalabyte.com team accounts can use ChatByte.');
       return;
     }
 
@@ -525,7 +525,7 @@ function LoginGate({ onUnlock }) {
             <div className="mt-8 lg:mt-0">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-700">Secure access</p>
               <h2 className="mt-3 text-3xl font-extrabold tracking-tight">Welcome back</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">Use your company email to continue to the YalaByte chat workspace.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Use your company email to continue to the ChatByte workspace.</p>
             </div>
             <div className="mt-6 grid grid-cols-2 rounded-md bg-slate-100 p-1">
               {['signin', 'signup'].map((item) => (

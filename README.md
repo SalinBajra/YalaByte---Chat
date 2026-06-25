@@ -1,4 +1,4 @@
-# YalaByte Chat
+# ChatByte
 
 A Chatwoot-style team inbox prototype for YalaByte support conversations.
 
