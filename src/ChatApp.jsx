@@ -14,6 +14,7 @@ import {
   subscribeWebsiteChats,
   supabase,
   toChatUser,
+  updateWebsiteChatConversation,
   upsertChatProfile
 } from './supabase';
 
@@ -588,7 +589,7 @@ function LoginGate({ onUnlock }) {
   );
 }
 
-function Thread({ conversation, onSend, onNote, draft, setDraft, mode, setMode }) {
+function Thread({ conversation, onResolve, onSend, onNote, draft, setDraft, mode, setMode }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-white">
       <header className="border-b border-slate-200 px-4 py-4 sm:px-5">
@@ -604,7 +605,17 @@ function Thread({ conversation, onSend, onNote, draft, setDraft, mode, setMode }
             <button className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50" title="Snooze" type="button">
               <Icon name="clock" />
             </button>
-            <button className="grid h-10 w-10 place-items-center rounded-xl bg-cyanbrand-500 text-navy-950 transition hover:bg-cyanbrand-400" title="Resolve" type="button">
+            <button
+              className={cx(
+                'grid h-10 w-10 place-items-center rounded-xl transition',
+                conversation.status === 'Resolved'
+                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+                  : 'bg-cyanbrand-500 text-navy-950 hover:bg-cyanbrand-400'
+              )}
+              onClick={onResolve}
+              title={conversation.status === 'Resolved' ? 'Resolved' : 'Resolve'}
+              type="button"
+            >
               <Icon name="check" />
             </button>
           </div>
@@ -1080,8 +1091,34 @@ export default function ChatApp() {
 
   const activeConversation = inboxConversations.find((conversation) => conversation.id === activeId) || filtered[0] || inboxConversations[0];
 
-  function updateConversation(id, changes) {
+  function patchConversationInView(id, changes) {
     setConversations((items) => items.map((item) => (item.id === id ? { ...item, ...changes } : item)));
+    setWebsiteConversations((items) => items.map((item) => (item.id === id ? { ...item, ...changes } : item)));
+  }
+
+  async function updateConversation(id, changes) {
+    const conversation = inboxConversations.find((item) => item.id === id);
+    if (!conversation) return;
+    const previous = conversation;
+    patchConversationInView(id, changes);
+
+    if (conversation.sourceType !== 'website-chat' || !supabase) return;
+
+    const payload = {};
+    if (changes.status) payload.status = changes.status.toLowerCase();
+    if (changes.assignee) payload.assigned_to_name = changes.assignee === 'Unassigned' ? '' : changes.assignee;
+
+    try {
+      await updateWebsiteChatConversation(conversation.dbId, payload, currentUser);
+    } catch (error) {
+      patchConversationInView(id, previous);
+      setTeamChatError(`Conversation update was not saved: ${error.message}`);
+    }
+  }
+
+  function resolveConversation() {
+    if (!activeConversation) return;
+    updateConversation(activeConversation.id, { status: 'Resolved' });
   }
 
   async function addMessage(type) {
@@ -1250,6 +1287,7 @@ export default function ChatApp() {
                 draft={draft}
                 mode={mode}
                 onNote={() => addMessage('note')}
+                onResolve={resolveConversation}
                 onSend={() => addMessage('agent')}
                 setDraft={setDraft}
                 setMode={setMode}

@@ -197,6 +197,31 @@ export async function createWebsiteChatReply(conversationId, body, user) {
   return data;
 }
 
+export async function updateWebsiteChatConversation(conversationId, changes, user) {
+  if (!supabase) return null;
+  const now = new Date().toISOString();
+  const payload = {
+    updated_at: now,
+    ...changes
+  };
+
+  if (changes.status === 'pending' || changes.status === 'open') {
+    payload.last_activity_at = now;
+  }
+  if (user && changes.assigned_to_name) {
+    payload.assigned_to = user.id;
+  }
+
+  const { data, error } = await supabase
+    .from('website_chat_conversations')
+    .update(payload)
+    .eq('id', conversationId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 export function subscribeWebsiteChats(onChange) {
   if (!supabase) return () => {};
   const channel = supabase
