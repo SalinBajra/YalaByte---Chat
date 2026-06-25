@@ -344,6 +344,187 @@ function ConversationList({ conversations, activeId, setActiveId }) {
   );
 }
 
+function LoginGate({ onUnlock }) {
+  const [mode, setMode] = useState('signin');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!isAllowedTeamEmail(normalizedEmail)) {
+      setError('Access denied. Only @yalabyte.com team accounts can use YalaByte Chat.');
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Use at least 8 characters for the password.');
+      return;
+    }
+
+    if (!supabase) {
+      const accounts = readLocalAccounts();
+      if (mode === 'signup') {
+        if (!name.trim()) {
+          setError('Add your name to create the account.');
+          return;
+        }
+        if (accounts.some((account) => account.email === normalizedEmail)) {
+          setError('This email already has a chat account.');
+          return;
+        }
+        const account = { id: createId('user'), name: name.trim(), email: normalizedEmail, password };
+        window.localStorage.setItem(ACCOUNTS_KEY, JSON.stringify([account, ...accounts]));
+        const session = { id: account.id, name: account.name, email: account.email };
+        saveLocalSession(session);
+        onUnlock(session);
+        return;
+      }
+
+      const account = accounts.find((item) => item.email === normalizedEmail && item.password === password);
+      if (!account) {
+        setError('No matching chat account found.');
+        return;
+      }
+      const session = { id: account.id, name: account.name, email: account.email };
+      saveLocalSession(session);
+      onUnlock(session);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (mode === 'signup') {
+        if (!name.trim()) {
+          setError('Add your name to create the account.');
+          return;
+        }
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            data: { name: name.trim() },
+            emailRedirectTo: `${window.location.origin}/`
+          }
+        });
+        if (signUpError) throw signUpError;
+        if (data.session) onUnlock(toChatUser(data.user));
+        else setMessage('Account created. Check your YalaByte inbox to confirm your email, then sign in.');
+        return;
+      }
+
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password
+      });
+      if (signInError) throw signInError;
+      onUnlock(toChatUser(data.user));
+    } catch (authError) {
+      setError(authError.message || 'Unable to authenticate. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="login-shell min-h-screen px-5 py-8 text-white sm:py-10">
+      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-5xl items-center">
+        <div className="grid w-full overflow-hidden rounded-3xl border border-white/10 bg-white shadow-soft lg:grid-cols-[1.05fr_0.95fr]">
+          <section className="relative hidden overflow-hidden bg-navy-950 p-10 lg:flex lg:flex-col lg:justify-between">
+            <div className="relative">
+              <Brand inverted />
+              <p className="mt-16 inline-flex rounded-full border border-cyanbrand-500/25 bg-cyanbrand-500/10 px-3 py-1.5 text-xs font-bold text-cyanbrand-400">
+                Private support workspace
+              </p>
+              <h1 className="mt-5 max-w-md text-4xl font-extrabold leading-tight tracking-tight text-white">Support, sales, and team chat in one calm inbox.</h1>
+              <p className="mt-4 max-w-md text-sm leading-7 text-slate-300">Restricted access for YalaByte team members. Customer conversations stay separate from internal team discussion.</p>
+            </div>
+            <div className="relative mt-12 grid gap-3">
+              {['YalaByte email only', 'Shared team chat', 'Customer conversation inbox'].map((item) => (
+                <div className="flex items-center gap-3 text-sm font-semibold text-slate-200" key={item}>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-cyanbrand-500/15 text-xs text-cyanbrand-400">✓</span>
+                  {item}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <form className="p-7 text-slate-950 sm:p-10" onSubmit={handleSubmit}>
+            <div className="lg:hidden"><Brand /></div>
+            <div className="mt-8 lg:mt-0">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-700">Secure access</p>
+              <h2 className="mt-3 text-3xl font-extrabold tracking-tight">Welcome back</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Use your company email to continue to the YalaByte chat workspace.</p>
+            </div>
+            <div className="mt-6 grid grid-cols-2 rounded-md bg-slate-100 p-1">
+              {['signin', 'signup'].map((item) => (
+                <button
+                  className={cx('rounded px-3 py-2 text-sm font-bold', mode === item ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500')}
+                  key={item}
+                  onClick={() => {
+                    setMode(item);
+                    setError('');
+                    setMessage('');
+                  }}
+                  type="button"
+                >
+                  {item === 'signin' ? 'Sign in' : 'Create'}
+                </button>
+              ))}
+            </div>
+            {mode === 'signup' ? (
+              <label className="mt-5 block text-sm font-semibold text-slate-900">
+                Name
+                <input className={fieldClass()} value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
+              </label>
+            ) : null}
+            <label className="mt-6 block text-sm font-semibold text-slate-900">
+              YalaByte email
+              <input
+                autoComplete="email"
+                autoFocus
+                className={fieldClass()}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="name@yalabyte.com"
+                type="email"
+                value={email}
+              />
+            </label>
+            <label className="mt-5 block text-sm font-semibold text-slate-900">
+              Password
+              <input
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                className={fieldClass()}
+                onChange={(event) => setPassword(event.target.value)}
+                type="password"
+                value={password}
+              />
+            </label>
+            {error ? (
+              <div className="mt-4 rounded-lg border border-red-100 bg-red-50 px-4 py-3" role="alert">
+                <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-red-700">Access rejected</p>
+                <p className="mt-1 text-sm font-medium leading-5 text-red-700">{error}</p>
+              </div>
+            ) : null}
+            {message ? <p className="mt-4 rounded-md bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">{message}</p> : null}
+            <button disabled={busy} className="mt-5 w-full rounded-lg bg-cyanbrand-500 px-4 py-3 text-sm font-bold text-navy-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-cyanbrand-400 hover:shadow-md disabled:cursor-wait disabled:opacity-60">
+              {busy ? 'Please wait...' : mode === 'signup' ? 'Create Account' : 'Sign In'}
+            </button>
+            <p className="mt-5 text-center text-xs leading-5 text-slate-400">Restricted to authorized <span className="font-bold text-slate-600">@yalabyte.com</span> accounts.</p>
+          </form>
+        </div>
+      </div>
+    </main>
+  );
+}
+
 function Thread({ conversation, onSend, onNote, draft, setDraft, mode, setMode }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-white">
