@@ -753,7 +753,9 @@ function Thread({ conversation, convertingLeadId, currentUser, onAssignToMe, onC
   );
 }
 
-function DetailPanel({ conversation, convertingLeadId, onConvertLead, updateConversation }) {
+function DetailPanel({ conversation, convertingLeadId, currentUser, onConvertLead, updateConversation }) {
+  const assignedToCurrentUser = currentUser?.name && conversation.assignee === currentUser.name;
+
   return (
     <aside className="hidden w-[320px] shrink-0 border-l border-slate-200 bg-white xl:flex xl:min-h-0 xl:flex-col">
       <div className="border-b border-slate-200 p-5">
@@ -779,6 +781,19 @@ function DetailPanel({ conversation, convertingLeadId, onConvertLead, updateConv
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
         <section>
           <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-500">Assignment</p>
+          <button
+            className={cx(
+              'mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-extrabold transition',
+              assignedToCurrentUser
+                ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            )}
+            onClick={() => updateConversation(conversation.id, { assignee: currentUser?.name || conversation.assignee })}
+            type="button"
+          >
+            <Icon name="user" />
+            {assignedToCurrentUser ? 'Assigned to me' : 'Assign to me'}
+          </button>
           <select
             className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-ink"
             onChange={(event) => updateConversation(conversation.id, { assignee: event.target.value })}
@@ -1420,6 +1435,7 @@ export default function ChatApp() {
               <DetailPanel
                 conversation={activeConversation}
                 convertingLeadId={convertingLeadId}
+                currentUser={currentUser}
                 onConvertLead={convertConversationToLead}
                 updateConversation={updateConversation}
               />
