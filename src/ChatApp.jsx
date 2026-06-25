@@ -957,6 +957,7 @@ export default function ChatApp() {
   const [selectedTeamChat, setSelectedTeamChat] = useState('room');
   const [teamDraft, setTeamDraft] = useState('');
   const [teamChatError, setTeamChatError] = useState('');
+  const [websiteChatError, setWebsiteChatError] = useState('');
 
   useEffect(() => {
     if (!supabase) {
@@ -1056,10 +1057,13 @@ export default function ChatApp() {
     const loadWebsiteChats = () => {
       fetchWebsiteChatConversations()
         .then((items) => {
-          if (active) setWebsiteConversations(items.map(mapWebsiteConversation));
+          if (active) {
+            setWebsiteConversations(items.map(mapWebsiteConversation));
+            setWebsiteChatError('');
+          }
         })
         .catch((error) => {
-          if (active) setTeamChatError(`Website chats could not load: ${error.message}`);
+          if (active) setWebsiteChatError(`Website chats could not load: ${error.message}`);
         });
     };
 
@@ -1256,6 +1260,11 @@ export default function ChatApp() {
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-white/80 bg-white/70 lg:flex-row">
           <aside className="flex h-[42vh] shrink-0 flex-col border-b border-slate-200 bg-white lg:h-auto lg:w-[390px] lg:border-b-0 lg:border-r">
             <div className="border-b border-slate-200 p-4">
+              {websiteChatError ? (
+                <p className="mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+                  {websiteChatError}
+                </p>
+              ) : null}
               <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                 <Icon name="search" />
                 <input

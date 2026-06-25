@@ -157,6 +157,20 @@ create policy "YalaByte users can reply to website chat messages"
     and author_email ilike '%@yalabyte.com'
   );
 
+grant usage on schema public to authenticated, service_role;
+
+grant select, insert, update on public.chat_profiles to authenticated;
+grant select, insert on public.team_chat_messages to authenticated;
+grant select, insert on public.team_direct_messages to authenticated;
+grant select, update on public.website_chat_conversations to authenticated;
+grant select, insert on public.website_chat_messages to authenticated;
+
+grant all on public.chat_profiles to service_role;
+grant all on public.team_chat_messages to service_role;
+grant all on public.team_direct_messages to service_role;
+grant all on public.website_chat_conversations to service_role;
+grant all on public.website_chat_messages to service_role;
+
 create index if not exists team_chat_messages_created_at_idx
   on public.team_chat_messages(created_at);
 
