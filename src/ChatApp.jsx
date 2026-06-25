@@ -1,5 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  createTeamMessage,
+  fetchTeamMessages,
+  isSupabaseConfigured,
+  subscribeTeamMessages,
+  supabase,
+  toChatUser,
+  upsertChatProfile
+} from './supabase';
 
+const ALLOWED_EMAIL_DOMAIN = 'yalabyte.com';
+const SESSION_KEY = 'yalabyte-chat-session';
+const ACCOUNTS_KEY = 'yalabyte-chat-accounts';
+const TEAM_MESSAGES_KEY = 'yalabyte-chat-team-messages';
 const teammates = ['Unassigned', 'Salin', 'Anish', 'Prabin', 'Sujan'];
 const statuses = ['Open', 'Pending', 'Resolved'];
 const channels = ['All', 'Website', 'Messenger', 'WhatsApp', 'Email'];
@@ -118,6 +131,12 @@ const quickReplies = [
   'That sounds like a good fit for our team. Can we schedule a quick discovery call?'
 ];
 
+const seedTeamMessages = [
+  { id: 'team-1', author_id: 'seed-salin', author_name: 'Salin', author_email: 'salin@yalabyte.com', body: 'Morning team. Please assign the Trailhouse inquiry before lunch.', created_at: new Date(Date.now() - 1000 * 60 * 36).toISOString() },
+  { id: 'team-2', author_id: 'seed-anish', author_name: 'Anish', author_email: 'anish@yalabyte.com', body: 'I can take the dental form issue. Waiting for SMTP access from Mina.', created_at: new Date(Date.now() - 1000 * 60 * 22).toISOString() },
+  { id: 'team-3', author_id: 'seed-prabin', author_name: 'Prabin', author_email: 'prabin@yalabyte.com', body: 'Invoice confirmation for Studio R is already handled in finance.', created_at: new Date(Date.now() - 1000 * 60 * 12).toISOString() }
+];
+
 const toneClass = {
   Open: 'bg-emerald-50 text-emerald-700 border-emerald-100',
   Pending: 'bg-amber-50 text-amber-700 border-amber-100',
@@ -132,7 +151,57 @@ function cx(...classes) {
 }
 
 function initials(name) {
-  return name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase();
+  return (name || 'YB').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase();
+}
+
+function isAllowedTeamEmail(email) {
+  return email.trim().toLowerCase().endsWith(`@${ALLOWED_EMAIL_DOMAIN}`);
+}
+
+function createId(prefix) {
+  if (window.crypto?.randomUUID) return `${prefix}-${window.crypto.randomUUID()}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function fieldClass() {
+  return 'mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-950 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-cyanbrand-500 focus:ring-4 focus:ring-cyanbrand-100';
+}
+
+function readLocalAccounts() {
+  try {
+    const accounts = JSON.parse(window.localStorage.getItem(ACCOUNTS_KEY) || '[]');
+    return Array.isArray(accounts) ? accounts : [];
+  } catch {
+    return [];
+  }
+}
+
+function readLocalSession() {
+  try {
+    return JSON.parse(window.localStorage.getItem(SESSION_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalSession(session) {
+  window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+}
+
+function readLocalTeamMessages() {
+  try {
+    const messages = JSON.parse(window.localStorage.getItem(TEAM_MESSAGES_KEY) || 'null');
+    return Array.isArray(messages) ? messages : seedTeamMessages;
+  } catch {
+    return seedTeamMessages;
+  }
+}
+
+function displayTime(value) {
+  if (!value) return 'Now';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' }).format(date);
 }
 
 function Icon({ name }) {
@@ -147,7 +216,9 @@ function Icon({ name }) {
     tag: 'M4 5h8l8 8-7 7-8-8V5Zm4 4h.01',
     bolt: 'M13 2 4 14h7l-1 8 9-12h-7l1-8Z',
     check: 'm5 13 4 4L19 7',
-    filter: 'M4 6h16M7 12h10m-7 6h4'
+    filter: 'M4 6h16M7 12h10m-7 6h4',
+    logout: 'M15 17l5-5-5-5m5 5H9m2 8H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6',
+    people: 'M17 19a4 4 0 0 0-8 0m4-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm5 8a3.5 3.5 0 0 0-2.5-3.35M6.5 15.65A3.5 3.5 0 0 0 4 19'
   };
 
   return (
@@ -157,21 +228,24 @@ function Icon({ name }) {
   );
 }
 
-function Brand() {
+function Brand({ compact = false, inverted = false }) {
   return (
     <div className="flex items-center gap-3">
-      <img className="h-10 w-10 rounded-xl object-cover shadow-sm" src="/favicon.png" alt="YalaByte" />
-      <div className="min-w-0">
-        <p className="truncate text-lg font-extrabold tracking-tight text-white">Yala<span className="text-cyanbrand-400">Byte</span></p>
-        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Team Inbox</p>
-      </div>
+      <img className={cx('rounded-xl object-cover shadow-sm', compact ? 'h-11 w-11' : 'h-10 w-10')} src="/favicon.png" alt="YalaByte" />
+      {!compact ? (
+        <div className="min-w-0">
+          <p className={cx('truncate text-lg font-extrabold tracking-tight', inverted ? 'text-white' : 'text-ink')}>Yala<span className="text-cyanbrand-400">Byte</span></p>
+          <p className={cx('text-[10px] font-bold uppercase tracking-[0.2em]', inverted ? 'text-slate-400' : 'text-slate-500')}>Team Inbox</p>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function Sidebar({ activeView, setActiveView }) {
+function Sidebar({ activeView, setActiveView, currentUser, onSignOut }) {
   const nav = [
     ['Inbox', 'inbox'],
+    ['Team Chat', 'people'],
     ['Contacts', 'user'],
     ['Automations', 'bolt'],
     ['Reports', 'clock']
@@ -180,7 +254,8 @@ function Sidebar({ activeView, setActiveView }) {
   return (
     <aside className="flex min-h-0 w-full shrink-0 flex-row items-center gap-2 border-b border-white/10 bg-navy-950 px-3 py-3 text-white lg:w-[76px] lg:flex-col lg:border-b-0 lg:border-r lg:px-2 lg:py-4">
       <div className="mr-auto lg:mx-0 lg:mb-4">
-        <Brand />
+        <div className="hidden lg:block"><Brand compact inverted /></div>
+        <div className="lg:hidden"><Brand inverted /></div>
       </div>
       <nav className="flex gap-1 lg:flex-col">
         {nav.map(([label, icon]) => (
@@ -198,6 +273,14 @@ function Sidebar({ activeView, setActiveView }) {
           </button>
         ))}
       </nav>
+      <div className="ml-auto flex items-center gap-2 lg:ml-0 lg:mt-auto lg:flex-col">
+        <span className="hidden min-w-0 text-right lg:grid lg:h-10 lg:w-10 lg:place-items-center lg:rounded-xl lg:bg-white/10 lg:text-xs lg:font-extrabold lg:text-cyanbrand-400" title={currentUser?.email}>
+          {initials(currentUser?.name)}
+        </span>
+        <button className="grid h-10 w-10 place-items-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white" onClick={onSignOut} title="Sign out" type="button">
+          <Icon name="logout" />
+        </button>
+      </div>
     </aside>
   );
 }
