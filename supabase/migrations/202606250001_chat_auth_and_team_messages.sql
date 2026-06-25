@@ -49,6 +49,9 @@ create table if not exists public.website_chat_conversations (
   assigned_to_name text not null default '',
   converted_lead_id text references public.leads(id) on delete set null,
   converted_at timestamptz,
+  ended_at timestamptz,
+  ended_by text not null default '' check (ended_by in ('', 'client', 'team')),
+  end_reason text not null default '',
   source_path text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -69,7 +72,19 @@ create table if not exists public.website_chat_messages (
 alter table public.website_chat_conversations
   add column if not exists customer_company text not null default '',
   add column if not exists converted_lead_id text references public.leads(id) on delete set null,
-  add column if not exists converted_at timestamptz;
+  add column if not exists converted_at timestamptz,
+  add column if not exists ended_at timestamptz,
+  add column if not exists ended_by text not null default '',
+  add column if not exists end_reason text not null default '';
+
+do $$
+begin
+  alter table public.website_chat_conversations
+    add constraint website_chat_conversations_ended_by_check
+    check (ended_by in ('', 'client', 'team'));
+exception
+  when duplicate_object then null;
+end $$;
 
 alter table public.chat_profiles enable row level security;
 alter table public.team_chat_messages enable row level security;

@@ -207,6 +207,15 @@ export async function updateWebsiteChatConversation(conversationId, changes, use
 
   if (changes.status === 'pending' || changes.status === 'open') {
     payload.last_activity_at = now;
+    payload.ended_at = null;
+    payload.ended_by = '';
+    payload.end_reason = '';
+  }
+  if (changes.status === 'resolved') {
+    payload.ended_at = changes.ended_at || now;
+    payload.ended_by = changes.ended_by || 'team';
+    payload.end_reason = changes.end_reason || 'team_resolved';
+    payload.last_activity_at = now;
   }
   if (user && changes.assigned_to_name) {
     payload.assigned_to = user.id;

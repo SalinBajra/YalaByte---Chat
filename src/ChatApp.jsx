@@ -247,6 +247,9 @@ function mapWebsiteConversation(item) {
     phone: item.customer_phone || '',
     convertedLeadId: item.converted_lead_id || '',
     convertedAt: item.converted_at || '',
+    endedAt: item.ended_at || '',
+    endedBy: item.ended_by || '',
+    endReason: item.end_reason || '',
     channel: 'Website',
     subject: item.subject || 'Website chat',
     status: item.status === 'resolved' ? 'Resolved' : item.status === 'pending' ? 'Pending' : 'Open',
@@ -268,8 +271,9 @@ function mapWebsiteConversation(item) {
     })),
     notes: [
       'Client started this conversation from the website chat widget.',
+      item.ended_at ? `Conversation ended by ${item.ended_by || 'team'} at ${displayTime(item.ended_at)}.` : '',
       item.converted_lead_id ? `Converted to CRM lead ${item.converted_lead_id}.` : 'Convert to CRM once the opportunity is qualified.'
-    ],
+    ].filter(Boolean),
     events: [`Source: ${item.source_path || 'Website'}`]
   };
 }
@@ -592,8 +596,10 @@ function LoginGate({ onUnlock }) {
   );
 }
 
-function Thread({ conversation, convertingLeadId, onConvertLead, onPending, onResolve, onSend, onNote, draft, setDraft, mode, setMode }) {
+function Thread({ conversation, convertingLeadId, currentUser, onAssignToMe, onConvertLead, onPending, onResolve, onSend, onNote, draft, setDraft, mode, setMode }) {
   const canConvert = conversation.sourceType === 'website-chat' && !conversation.convertedLeadId;
+  const assignedToCurrentUser = currentUser?.name && conversation.assignee === currentUser.name;
+  const isResolved = conversation.status === 'Resolved';
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-white">
@@ -607,6 +613,19 @@ function Thread({ conversation, convertingLeadId, onConvertLead, onPending, onRe
             <p className="mt-1 text-sm text-slate-500">{conversation.customer} from {conversation.company} via {conversation.channel}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              className={cx(
+                'inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-extrabold transition',
+                assignedToCurrentUser
+                  ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                  : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+              )}
+              onClick={onAssignToMe}
+              type="button"
+            >
+              <Icon name="user" />
+              {assignedToCurrentUser ? 'Assigned to me' : 'Assign to me'}
+            </button>
             {conversation.sourceType === 'website-chat' ? (
               conversation.convertedLeadId ? (
                 <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-extrabold text-emerald-700">
@@ -677,6 +696,11 @@ function Thread({ conversation, convertingLeadId, onConvertLead, onPending, onRe
       </div>
 
       <footer className="border-t border-slate-200 bg-white p-4">
+        {isResolved ? (
+          <div className="mb-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
+            This chat is resolved and closed for the client. Reopen it from the status menu before replying again.
+          </div>
+        ) : null}
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
             {['Reply', 'Note'].map((item) => (
@@ -701,8 +725,9 @@ function Thread({ conversation, convertingLeadId, onConvertLead, onPending, onRe
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
           <textarea
             className="min-h-24 w-full resize-none border-0 text-sm leading-6 text-ink outline-none placeholder:text-slate-400"
+            disabled={isResolved && mode === 'Reply'}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder={mode === 'Reply' ? 'Reply to the customer...' : 'Add an internal note...'}
+            placeholder={isResolved && mode === 'Reply' ? 'Reopen this chat before replying...' : mode === 'Reply' ? 'Reply to the customer...' : 'Add an internal note...'}
             value={draft}
           />
           <div className="flex items-center justify-between border-t border-slate-100 pt-3">
@@ -714,7 +739,7 @@ function Thread({ conversation, convertingLeadId, onConvertLead, onPending, onRe
             </div>
             <button
               className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40"
-              disabled={!draft.trim()}
+              disabled={!draft.trim() || (isResolved && mode === 'Reply')}
               onClick={mode === 'Reply' ? onSend : onNote}
               type="button"
             >
@@ -1186,6 +1211,11 @@ export default function ChatApp() {
     updateConversation(activeConversation.id, { status: 'Pending' });
   }
 
+  function assignActiveConversationToMe() {
+    if (!activeConversation || !currentUser?.name) return;
+    updateConversation(activeConversation.id, { assignee: currentUser.name });
+  }
+
   async function convertConversationToLead(conversation) {
     if (!conversation?.dbId || conversation.convertedLeadId || !supabase) return;
     setConvertingLeadId(conversation.id);
@@ -1375,8 +1405,10 @@ export default function ChatApp() {
               <Thread
                 conversation={activeConversation}
                 convertingLeadId={convertingLeadId}
+                currentUser={currentUser}
                 draft={draft}
                 mode={mode}
+                onAssignToMe={assignActiveConversationToMe}
                 onConvertLead={convertConversationToLead}
                 onNote={() => addMessage('note')}
                 onPending={pendingConversation}
