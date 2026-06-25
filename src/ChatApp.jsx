@@ -315,10 +315,7 @@ function Brand({ compact = false, inverted = false }) {
 function Sidebar({ activeView, setActiveView, currentUser, onSignOut }) {
   const nav = [
     ['Inbox', 'inbox'],
-    ['Team Chat', 'people'],
-    ['Contacts', 'user'],
-    ['Automations', 'bolt'],
-    ['Reports', 'clock']
+    ['Team Chat', 'people']
   ];
 
   return (
@@ -595,7 +592,9 @@ function LoginGate({ onUnlock }) {
   );
 }
 
-function Thread({ conversation, onResolve, onSend, onNote, draft, setDraft, mode, setMode }) {
+function Thread({ conversation, convertingLeadId, onConvertLead, onPending, onResolve, onSend, onNote, draft, setDraft, mode, setMode }) {
+  const canConvert = conversation.sourceType === 'website-chat' && !conversation.convertedLeadId;
+
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-white">
       <header className="border-b border-slate-200 px-4 py-4 sm:px-5">
@@ -607,8 +606,35 @@ function Thread({ conversation, onResolve, onSend, onNote, draft, setDraft, mode
             </div>
             <p className="mt-1 text-sm text-slate-500">{conversation.customer} from {conversation.company} via {conversation.channel}</p>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50" title="Snooze" type="button">
+          <div className="flex flex-wrap items-center gap-2">
+            {conversation.sourceType === 'website-chat' ? (
+              conversation.convertedLeadId ? (
+                <span className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-extrabold text-emerald-700">
+                  CRM lead
+                </span>
+              ) : (
+                <button
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-navy-950 px-3 text-xs font-extrabold text-white transition hover:bg-navy-800 disabled:cursor-wait disabled:opacity-60"
+                  disabled={!canConvert || convertingLeadId === conversation.id}
+                  onClick={() => onConvertLead(conversation)}
+                  type="button"
+                >
+                  <Icon name="bolt" />
+                  {convertingLeadId === conversation.id ? 'Converting' : 'Convert lead'}
+                </button>
+              )
+            ) : null}
+            <button
+              className={cx(
+                'grid h-10 w-10 place-items-center rounded-xl border transition',
+                conversation.status === 'Pending'
+                  ? 'border-amber-100 bg-amber-50 text-amber-700'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+              )}
+              onClick={onPending}
+              title="Mark pending"
+              type="button"
+            >
               <Icon name="clock" />
             </button>
             <button
@@ -1155,6 +1181,11 @@ export default function ChatApp() {
     updateConversation(activeConversation.id, { status: 'Resolved' });
   }
 
+  function pendingConversation() {
+    if (!activeConversation) return;
+    updateConversation(activeConversation.id, { status: 'Pending' });
+  }
+
   async function convertConversationToLead(conversation) {
     if (!conversation?.dbId || conversation.convertedLeadId || !supabase) return;
     setConvertingLeadId(conversation.id);
@@ -1343,9 +1374,12 @@ export default function ChatApp() {
             <>
               <Thread
                 conversation={activeConversation}
+                convertingLeadId={convertingLeadId}
                 draft={draft}
                 mode={mode}
+                onConvertLead={convertConversationToLead}
                 onNote={() => addMessage('note')}
+                onPending={pendingConversation}
                 onResolve={resolveConversation}
                 onSend={() => addMessage('agent')}
                 setDraft={setDraft}
