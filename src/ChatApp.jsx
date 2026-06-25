@@ -1,0 +1,557 @@
+import { useMemo, useState } from 'react';
+
+const teammates = ['Unassigned', 'Salin', 'Anish', 'Prabin', 'Sujan'];
+const statuses = ['Open', 'Pending', 'Resolved'];
+const channels = ['All', 'Website', 'Messenger', 'WhatsApp', 'Email'];
+
+const seedConversations = [
+  {
+    id: 'conv-1004',
+    customer: 'Aarav Sharma',
+    company: 'Everest Retail',
+    email: 'aarav@everestretail.com',
+    phone: '+977 980-1122334',
+    channel: 'Website',
+    subject: 'Need ecommerce maintenance plan',
+    status: 'Open',
+    priority: 'High',
+    assignee: 'Salin',
+    lastSeen: '4 min ago',
+    waitTime: '8m',
+    source: 'Pricing page',
+    location: 'Kathmandu, NP',
+    labels: ['Sales lead', 'Website care'],
+    revenue: 'Rs 85,000',
+    sentiment: 'Warm',
+    messages: [
+      { id: 'm1', type: 'customer', author: 'Aarav Sharma', time: '10:28 AM', body: 'Hi, we need monthly website maintenance for our ecommerce site. Do you offer emergency support too?' },
+      { id: 'm2', type: 'agent', author: 'Salin', time: '10:31 AM', body: 'Yes, we can cover updates, monitoring, small fixes, and urgent incident support. How many monthly changes do you usually need?' },
+      { id: 'm3', type: 'customer', author: 'Aarav Sharma', time: '10:35 AM', body: 'Usually 8 to 12. We also need someone to check plugin updates and checkout errors.' }
+    ],
+    notes: [
+      'Potential maintenance client. Ask about current stack and monthly traffic.',
+      'Mention handoff from CRM once package is confirmed.'
+    ],
+    events: ['Visited pricing page twice', 'Opened chat from /services/website-maintenance']
+  },
+  {
+    id: 'conv-1003',
+    customer: 'Mina Gurung',
+    company: 'Himal Dental Care',
+    email: 'mina@himaldental.com',
+    phone: '+977 981-4455667',
+    channel: 'WhatsApp',
+    subject: 'Appointment form is not sending email',
+    status: 'Pending',
+    priority: 'Medium',
+    assignee: 'Anish',
+    lastSeen: '21 min ago',
+    waitTime: '34m',
+    source: 'Client portal',
+    location: 'Pokhara, NP',
+    labels: ['Bug', 'Existing client'],
+    revenue: 'Rs 18,000',
+    sentiment: 'Neutral',
+    messages: [
+      { id: 'm1', type: 'customer', author: 'Mina Gurung', time: '9:42 AM', body: 'The website appointment form stopped sending email to reception. Patients say submission is successful though.' },
+      { id: 'm2', type: 'agent', author: 'Anish', time: '9:51 AM', body: 'Thanks Mina. We are checking the mail logs and form settings now. I will update you shortly.' },
+      { id: 'm3', type: 'note', author: 'Anish', time: '9:57 AM', body: 'Likely SMTP password expired. Need hosting panel access from client.' }
+    ],
+    notes: ['Ask for SMTP/hosting access if not in vault.', 'Keep pending until credentials arrive.'],
+    events: ['Client created support ticket', 'SLA response met']
+  },
+  {
+    id: 'conv-1002',
+    customer: 'Nabin KC',
+    company: 'Trailhouse Nepal',
+    email: 'hello@trailhouse.com.np',
+    phone: '+977 984-6677889',
+    channel: 'Email',
+    subject: 'Can you redesign our trekking package pages?',
+    status: 'Open',
+    priority: 'High',
+    assignee: 'Unassigned',
+    lastSeen: '1 hr ago',
+    waitTime: '1h 12m',
+    source: 'Inbound email',
+    location: 'Lalitpur, NP',
+    labels: ['New lead', 'Design'],
+    revenue: 'Rs 120,000',
+    sentiment: 'Warm',
+    messages: [
+      { id: 'm1', type: 'customer', author: 'Nabin KC', time: '8:55 AM', body: 'We want to redesign our trekking package pages before autumn bookings. Can your team help with UX and SEO?' },
+      { id: 'm2', type: 'customer', author: 'Nabin KC', time: '9:07 AM', body: 'We can share references and current analytics if needed.' }
+    ],
+    notes: ['Good fit for CRM conversion. Assign owner and schedule discovery call.'],
+    events: ['Email imported', 'No owner assigned']
+  },
+  {
+    id: 'conv-1001',
+    customer: 'Ritika Thapa',
+    company: 'Studio R',
+    email: 'ritika@studior.com',
+    phone: '+977 986-1100220',
+    channel: 'Messenger',
+    subject: 'Invoice copy and payment confirmation',
+    status: 'Resolved',
+    priority: 'Low',
+    assignee: 'Prabin',
+    lastSeen: 'Yesterday',
+    waitTime: 'Done',
+    source: 'Facebook page',
+    location: 'Bhaktapur, NP',
+    labels: ['Finance', 'Invoice'],
+    revenue: 'Rs 42,000',
+    sentiment: 'Happy',
+    messages: [
+      { id: 'm1', type: 'customer', author: 'Ritika Thapa', time: 'Yesterday', body: 'Can you send the invoice copy again? I paid the remaining balance today.' },
+      { id: 'm2', type: 'agent', author: 'Prabin', time: 'Yesterday', body: 'Received, thank you. I sent the invoice copy and marked it paid in finance.' }
+    ],
+    notes: ['Payment confirmed in finance app.'],
+    events: ['Invoice shared', 'Conversation resolved']
+  }
+];
+
+const quickReplies = [
+  'Thanks for reaching out. I am checking this now and will update you shortly.',
+  'Could you share your website URL and any screenshots that show the issue?',
+  'That sounds like a good fit for our team. Can we schedule a quick discovery call?'
+];
+
+const toneClass = {
+  Open: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  Pending: 'bg-amber-50 text-amber-700 border-amber-100',
+  Resolved: 'bg-slate-100 text-slate-600 border-slate-200',
+  High: 'bg-rose-50 text-rose-700 border-rose-100',
+  Medium: 'bg-cyan-50 text-cyan-700 border-cyan-100',
+  Low: 'bg-slate-100 text-slate-600 border-slate-200'
+};
+
+function cx(...classes) {
+  return classes.filter(Boolean).join(' ');
+}
+
+function initials(name) {
+  return name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase();
+}
+
+function Icon({ name }) {
+  const paths = {
+    inbox: 'M4 5h16v10h-4l-2 4h-4l-2-4H4V5Z',
+    chat: 'M5 6h14v9H9l-4 4V6Z',
+    search: 'm20 20-4.2-4.2M18 11a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z',
+    send: 'M4 12 20 5l-5 15-3-6-8-2Z',
+    note: 'M6 4h10l2 2v14H6V4Zm10 0v4h4',
+    clock: 'M12 6v6l4 2m5-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
+    user: 'M16 19a4 4 0 0 0-8 0m4-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
+    tag: 'M4 5h8l8 8-7 7-8-8V5Zm4 4h.01',
+    bolt: 'M13 2 4 14h7l-1 8 9-12h-7l1-8Z',
+    check: 'm5 13 4 4L19 7',
+    filter: 'M4 6h16M7 12h10m-7 6h4'
+  };
+
+  return (
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+      <path strokeLinecap="round" strokeLinejoin="round" d={paths[name]} />
+    </svg>
+  );
+}
+
+function Brand() {
+  return (
+    <div className="flex items-center gap-3">
+      <img className="h-10 w-10 rounded-xl object-cover shadow-sm" src="/favicon.png" alt="YalaByte" />
+      <div className="min-w-0">
+        <p className="truncate text-lg font-extrabold tracking-tight text-white">Yala<span className="text-cyanbrand-400">Byte</span></p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Team Inbox</p>
+      </div>
+    </div>
+  );
+}
+
+function Sidebar({ activeView, setActiveView }) {
+  const nav = [
+    ['Inbox', 'inbox'],
+    ['Contacts', 'user'],
+    ['Automations', 'bolt'],
+    ['Reports', 'clock']
+  ];
+
+  return (
+    <aside className="flex min-h-0 w-full shrink-0 flex-row items-center gap-2 border-b border-white/10 bg-navy-950 px-3 py-3 text-white lg:w-[76px] lg:flex-col lg:border-b-0 lg:border-r lg:px-2 lg:py-4">
+      <div className="mr-auto lg:mx-0 lg:mb-4">
+        <Brand />
+      </div>
+      <nav className="flex gap-1 lg:flex-col">
+        {nav.map(([label, icon]) => (
+          <button
+            key={label}
+            className={cx(
+              'grid h-10 w-10 place-items-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white',
+              activeView === label && 'bg-cyanbrand-500 text-navy-950 hover:bg-cyanbrand-400 hover:text-navy-950'
+            )}
+            onClick={() => setActiveView(label)}
+            title={label}
+            type="button"
+          >
+            <Icon name={icon} />
+          </button>
+        ))}
+      </nav>
+    </aside>
+  );
+}
+
+function Metric({ label, value, icon }) {
+  return (
+    <div className="flex min-w-[138px] items-center gap-3 border-r border-slate-200 px-4 py-3 last:border-r-0">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-cyan-100 bg-cyan-50 text-cyan-700">
+        <Icon name={icon} />
+      </span>
+      <div className="min-w-0">
+        <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-500">{label}</p>
+        <p className="truncate text-lg font-extrabold tracking-tight text-ink">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function ConversationList({ conversations, activeId, setActiveId }) {
+  if (!conversations.length) {
+    return (
+      <div className="p-8 text-center">
+        <p className="font-bold text-ink">No conversations found</p>
+        <p className="mt-1 text-sm text-slate-500">Adjust the filters to bring messages back into view.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-0 overflow-y-auto">
+      {conversations.map((conversation) => (
+        <button
+          key={conversation.id}
+          className={cx(
+            'block w-full border-b border-slate-100 px-4 py-4 text-left transition hover:bg-slate-50',
+            activeId === conversation.id && 'bg-cyan-50/70 hover:bg-cyan-50'
+          )}
+          onClick={() => setActiveId(conversation.id)}
+          type="button"
+        >
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-navy-950 text-xs font-extrabold text-cyanbrand-400">
+              {initials(conversation.customer)}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center justify-between gap-3">
+                <span className="truncate text-sm font-extrabold text-ink">{conversation.customer}</span>
+                <span className="shrink-0 text-xs font-semibold text-slate-400">{conversation.lastSeen}</span>
+              </span>
+              <span className="mt-1 block truncate text-sm font-semibold text-slate-700">{conversation.subject}</span>
+              <span className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-600">{conversation.channel}</span>
+                <span className={cx('rounded-full border px-2 py-1 text-[11px] font-bold', toneClass[conversation.status])}>{conversation.status}</span>
+                <span className={cx('rounded-full border px-2 py-1 text-[11px] font-bold', toneClass[conversation.priority])}>{conversation.priority}</span>
+              </span>
+            </span>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Thread({ conversation, onSend, onNote, draft, setDraft, mode, setMode }) {
+  return (
+    <section className="flex min-h-0 flex-1 flex-col bg-white">
+      <header className="border-b border-slate-200 px-4 py-4 sm:px-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-lg font-extrabold tracking-tight text-ink sm:text-xl">{conversation.subject}</h1>
+              <span className={cx('rounded-full border px-2.5 py-1 text-xs font-extrabold', toneClass[conversation.status])}>{conversation.status}</span>
+            </div>
+            <p className="mt-1 text-sm text-slate-500">{conversation.customer} from {conversation.company} via {conversation.channel}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50" title="Snooze" type="button">
+              <Icon name="clock" />
+            </button>
+            <button className="grid h-10 w-10 place-items-center rounded-xl bg-cyanbrand-500 text-navy-950 transition hover:bg-cyanbrand-400" title="Resolve" type="button">
+              <Icon name="check" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50 px-4 py-5 sm:px-6">
+        {conversation.messages.map((message) => (
+          <div key={message.id} className={cx('flex', message.type === 'agent' && 'justify-end', message.type === 'note' && 'justify-center')}>
+            <article
+              className={cx(
+                'max-w-[78%] rounded-2xl border px-4 py-3 shadow-sm',
+                message.type === 'customer' && 'border-slate-200 bg-white text-slate-800',
+                message.type === 'agent' && 'border-cyan-100 bg-cyan-50 text-ink',
+                message.type === 'note' && 'max-w-[92%] border-amber-100 bg-amber-50 text-amber-900'
+              )}
+            >
+              <div className="flex items-center gap-2 text-xs font-extrabold">
+                {message.type === 'note' ? <Icon name="note" /> : null}
+                <span>{message.type === 'note' ? 'Internal note' : message.author}</span>
+                <span className="font-semibold text-slate-400">{message.time}</span>
+              </div>
+              <p className="mt-2 whitespace-pre-line text-sm leading-6">{message.body}</p>
+            </article>
+          </div>
+        ))}
+      </div>
+
+      <footer className="border-t border-slate-200 bg-white p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+            {['Reply', 'Note'].map((item) => (
+              <button
+                key={item}
+                className={cx('rounded-lg px-3 py-1.5 text-xs font-extrabold transition', mode === item ? 'bg-white text-ink shadow-sm' : 'text-slate-500 hover:text-ink')}
+                onClick={() => setMode(item)}
+                type="button"
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {quickReplies.map((reply) => (
+              <button key={reply} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50" onClick={() => setDraft(reply)} type="button">
+                {reply.split('.')[0]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <textarea
+            className="min-h-24 w-full resize-none border-0 text-sm leading-6 text-ink outline-none placeholder:text-slate-400"
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder={mode === 'Reply' ? 'Reply to the customer...' : 'Add an internal note...'}
+            value={draft}
+          />
+          <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
+              <span className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-500" title="Insert tag">
+                <Icon name="tag" />
+              </span>
+              {mode === 'Reply' ? 'Customer will receive this message' : 'Only the team can see this note'}
+            </div>
+            <button
+              className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!draft.trim()}
+              onClick={mode === 'Reply' ? onSend : onNote}
+              type="button"
+            >
+              <Icon name="send" />
+              Send
+            </button>
+          </div>
+        </div>
+      </footer>
+    </section>
+  );
+}
+
+function DetailPanel({ conversation, updateConversation }) {
+  return (
+    <aside className="hidden w-[320px] shrink-0 border-l border-slate-200 bg-white xl:flex xl:min-h-0 xl:flex-col">
+      <div className="border-b border-slate-200 p-5">
+        <div className="flex items-center gap-3">
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-navy-950 text-sm font-extrabold text-cyanbrand-400">{initials(conversation.customer)}</span>
+          <div className="min-w-0">
+            <p className="truncate text-base font-extrabold text-ink">{conversation.customer}</p>
+            <p className="truncate text-sm text-slate-500">{conversation.company}</p>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-xl bg-slate-50 p-3">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">Value</p>
+            <p className="mt-1 text-sm font-extrabold text-ink">{conversation.revenue}</p>
+          </div>
+          <div className="rounded-xl bg-slate-50 p-3">
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">SLA</p>
+            <p className="mt-1 text-sm font-extrabold text-ink">{conversation.waitTime}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
+        <section>
+          <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-500">Assignment</p>
+          <select
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-ink"
+            onChange={(event) => updateConversation(conversation.id, { assignee: event.target.value })}
+            value={conversation.assignee}
+          >
+            {teammates.map((member) => <option key={member}>{member}</option>)}
+          </select>
+          <select
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-ink"
+            onChange={(event) => updateConversation(conversation.id, { status: event.target.value })}
+            value={conversation.status}
+          >
+            {statuses.map((status) => <option key={status}>{status}</option>)}
+          </select>
+        </section>
+
+        <section>
+          <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-500">Contact</p>
+          <div className="mt-2 space-y-2 text-sm">
+            <p className="truncate rounded-xl bg-slate-50 px-3 py-2 font-semibold text-slate-700">{conversation.email}</p>
+            <p className="truncate rounded-xl bg-slate-50 px-3 py-2 font-semibold text-slate-700">{conversation.phone}</p>
+            <p className="truncate rounded-xl bg-slate-50 px-3 py-2 font-semibold text-slate-700">{conversation.location}</p>
+          </div>
+        </section>
+
+        <section>
+          <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-500">Labels</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {conversation.labels.map((label) => (
+              <span key={label} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-600">{label}</span>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-500">Notes</p>
+          <div className="mt-2 space-y-2">
+            {conversation.notes.map((note) => (
+              <p key={note} className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm leading-5 text-amber-900">{note}</p>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <p className="text-xs font-extrabold uppercase tracking-[0.14em] text-slate-500">Activity</p>
+          <div className="mt-3 space-y-3">
+            {conversation.events.map((event) => (
+              <div key={event} className="flex gap-2 text-sm text-slate-600">
+                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-cyanbrand-500" />
+                <span>{event}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </aside>
+  );
+}
+
+export default function ChatApp() {
+  const [activeView, setActiveView] = useState('Inbox');
+  const [conversations, setConversations] = useState(seedConversations);
+  const [activeId, setActiveId] = useState(seedConversations[0].id);
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('Open');
+  const [channel, setChannel] = useState('All');
+  const [draft, setDraft] = useState('');
+  const [mode, setMode] = useState('Reply');
+
+  const filtered = useMemo(() => {
+    const search = query.trim().toLowerCase();
+    return conversations.filter((conversation) => {
+      const matchesStatus = status === 'All' || conversation.status === status;
+      const matchesChannel = channel === 'All' || conversation.channel === channel;
+      const text = `${conversation.customer} ${conversation.company} ${conversation.subject} ${conversation.email}`.toLowerCase();
+      return matchesStatus && matchesChannel && (!search || text.includes(search));
+    });
+  }, [channel, conversations, query, status]);
+
+  const activeConversation = conversations.find((conversation) => conversation.id === activeId) || filtered[0] || conversations[0];
+
+  function updateConversation(id, changes) {
+    setConversations((items) => items.map((item) => (item.id === id ? { ...item, ...changes } : item)));
+  }
+
+  function addMessage(type) {
+    if (!draft.trim()) return;
+    const message = {
+      id: `m-${Date.now()}`,
+      type,
+      author: type === 'note' ? 'Team note' : 'YalaByte Team',
+      time: 'Now',
+      body: draft.trim()
+    };
+    setConversations((items) => items.map((item) => (
+      item.id === activeConversation.id
+        ? { ...item, messages: [...item.messages, message], lastSeen: 'Now', status: type === 'agent' ? 'Pending' : item.status }
+        : item
+    )));
+    setDraft('');
+  }
+
+  const openCount = conversations.filter((conversation) => conversation.status === 'Open').length;
+  const pendingCount = conversations.filter((conversation) => conversation.status === 'Pending').length;
+  const unassignedCount = conversations.filter((conversation) => conversation.assignee === 'Unassigned').length;
+
+  return (
+    <main className="chat-shell flex min-h-screen flex-col lg:flex-row">
+      <Sidebar activeView={activeView} setActiveView={setActiveView} />
+
+      <section className="flex min-h-0 flex-1 flex-col">
+        <header className="border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur sm:px-5">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-cyan-700">{activeView}</p>
+              <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-ink">Customer conversations</h2>
+            </div>
+            <div className="flex overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <Metric label="Open" value={openCount} icon="chat" />
+              <Metric label="Pending" value={pendingCount} icon="clock" />
+              <Metric label="Unassigned" value={unassignedCount} icon="user" />
+            </div>
+          </div>
+        </header>
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-white/80 bg-white/70 lg:flex-row">
+          <aside className="flex h-[42vh] shrink-0 flex-col border-b border-slate-200 bg-white lg:h-auto lg:w-[390px] lg:border-b-0 lg:border-r">
+            <div className="border-b border-slate-200 p-4">
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                <Icon name="search" />
+                <input
+                  className="min-w-0 flex-1 border-0 bg-transparent text-sm font-semibold text-ink outline-none placeholder:text-slate-400"
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search conversations"
+                  value={query}
+                />
+              </div>
+              <div className="mt-3 flex gap-2">
+                <label className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">
+                  <Icon name="filter" />
+                  <select className="min-w-0 flex-1 border-0 bg-transparent outline-none" onChange={(event) => setStatus(event.target.value)} value={status}>
+                    {['All', ...statuses].map((item) => <option key={item}>{item}</option>)}
+                  </select>
+                </label>
+                <select className="w-32 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 outline-none" onChange={(event) => setChannel(event.target.value)} value={channel}>
+                  {channels.map((item) => <option key={item}>{item}</option>)}
+                </select>
+              </div>
+            </div>
+            <ConversationList conversations={filtered} activeId={activeConversation?.id} setActiveId={setActiveId} />
+          </aside>
+
+          {activeConversation ? (
+            <>
+              <Thread
+                conversation={activeConversation}
+                draft={draft}
+                mode={mode}
+                onNote={() => addMessage('note')}
+                onSend={() => addMessage('agent')}
+                setDraft={setDraft}
+                setMode={setMode}
+              />
+              <DetailPanel conversation={activeConversation} updateConversation={updateConversation} />
+            </>
+          ) : null}
+        </div>
+      </section>
+    </main>
+  );
+}
