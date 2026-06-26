@@ -23,7 +23,7 @@ const ALLOWED_EMAIL_DOMAIN = 'yalabyte.com';
 const SESSION_KEY = 'yalabyte-chat-session';
 const ACCOUNTS_KEY = 'yalabyte-chat-accounts';
 const TEAM_MESSAGES_KEY = 'yalabyte-chat-team-messages';
-const teammates = ['Unassigned', 'Salin', 'Anish', 'Prabin', 'Sujan'];
+const defaultAssignmentOptions = ['Unassigned'];
 const statuses = ['Open', 'Pending', 'Resolved'];
 const channels = ['All', 'Website', 'Messenger', 'WhatsApp', 'Email'];
 
@@ -141,11 +141,7 @@ const quickReplies = [
   'That sounds like a good fit for our team. Can we schedule a quick discovery call?'
 ];
 
-const seedTeamMessages = [
-  { id: 'team-1', author_id: 'seed-salin', author_name: 'Salin', author_email: 'salin@yalabyte.com', body: 'Morning team. Please assign the Trailhouse inquiry before lunch.', created_at: new Date(Date.now() - 1000 * 60 * 36).toISOString() },
-  { id: 'team-2', author_id: 'seed-anish', author_name: 'Anish', author_email: 'anish@yalabyte.com', body: 'I can take the dental form issue. Waiting for SMTP access from Mina.', created_at: new Date(Date.now() - 1000 * 60 * 22).toISOString() },
-  { id: 'team-3', author_id: 'seed-prabin', author_name: 'Prabin', author_email: 'prabin@yalabyte.com', body: 'Invoice confirmation for Studio R is already handled in finance.', created_at: new Date(Date.now() - 1000 * 60 * 12).toISOString() }
-];
+const seedTeamMessages = [];
 
 const toneClass = {
   Open: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -201,7 +197,7 @@ function saveLocalSession(session) {
 function readLocalTeamMessages() {
   try {
     const messages = JSON.parse(window.localStorage.getItem(TEAM_MESSAGES_KEY) || 'null');
-    return Array.isArray(messages) ? messages : seedTeamMessages;
+    return Array.isArray(messages) ? messages.filter((message) => !String(message.id || '').startsWith('team-')) : seedTeamMessages;
   } catch {
     return seedTeamMessages;
   }
@@ -753,7 +749,7 @@ function Thread({ conversation, convertingLeadId, currentUser, onAssignToMe, onC
   );
 }
 
-function DetailPanel({ conversation, convertingLeadId, currentUser, onConvertLead, updateConversation }) {
+function DetailPanel({ assignmentOptions, conversation, convertingLeadId, currentUser, onConvertLead, updateConversation }) {
   const assignedToCurrentUser = currentUser?.name && conversation.assignee === currentUser.name;
 
   return (
@@ -799,7 +795,7 @@ function DetailPanel({ conversation, convertingLeadId, currentUser, onConvertLea
             onChange={(event) => updateConversation(conversation.id, { assignee: event.target.value })}
             value={conversation.assignee}
           >
-            {teammates.map((member) => <option key={member}>{member}</option>)}
+            {assignmentOptions.map((member) => <option key={member}>{member}</option>)}
           </select>
           <select
             className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-ink"
@@ -1038,9 +1034,9 @@ export default function ChatApp() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [activeView, setActiveView] = useState('Inbox');
-  const [conversations, setConversations] = useState(seedConversations);
+  const [conversations, setConversations] = useState([]);
   const [websiteConversations, setWebsiteConversations] = useState([]);
-  const [activeId, setActiveId] = useState(seedConversations[0].id);
+  const [activeId, setActiveId] = useState('');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('Open');
   const [channel, setChannel] = useState('All');
@@ -1178,6 +1174,16 @@ export default function ChatApp() {
       ...conversations.filter((conversation) => !websiteIds.has(conversation.id))
     ];
   }, [conversations, websiteConversations]);
+
+  const assignmentOptions = useMemo(() => {
+    const names = [
+      ...defaultAssignmentOptions,
+      currentUser?.name,
+      ...teamProfiles.map(profileName),
+      ...inboxConversations.map((conversation) => conversation.assignee)
+    ];
+    return names.filter((name, index) => name && names.indexOf(name) === index);
+  }, [currentUser?.name, inboxConversations, teamProfiles]);
 
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -1433,6 +1439,7 @@ export default function ChatApp() {
                 setMode={setMode}
               />
               <DetailPanel
+                assignmentOptions={assignmentOptions}
                 conversation={activeConversation}
                 convertingLeadId={convertingLeadId}
                 currentUser={currentUser}
