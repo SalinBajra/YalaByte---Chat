@@ -10,7 +10,7 @@
 body {
   margin: 0;
   min-width: 320px;
-  background: #eef3f8;
+  background: #eaf1f7;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -24,10 +24,10 @@ body {
 
 .chat-shell {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(238, 243, 248, 0.96)),
-    radial-gradient(circle at 10% 0%, rgba(19, 200, 222, 0.09), transparent 28rem),
-    radial-gradient(circle at 100% 10%, rgba(6, 17, 31, 0.06), transparent 24rem),
-    #eef3f8;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(234, 241, 247, 0.96)),
+    radial-gradient(circle at 8% 0%, rgba(19, 200, 222, 0.12), transparent 30rem),
+    radial-gradient(circle at 96% 12%, rgba(6, 17, 31, 0.08), transparent 26rem),
+    #eaf1f7;
 }
 
 * {

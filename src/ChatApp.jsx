@@ -288,7 +288,8 @@ function Icon({ name }) {
     check: 'm5 13 4 4L19 7',
     filter: 'M4 6h16M7 12h10m-7 6h4',
     logout: 'M15 17l5-5-5-5m5 5H9m2 8H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6',
-    people: 'M17 19a4 4 0 0 0-8 0m4-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm5 8a3.5 3.5 0 0 0-2.5-3.35M6.5 15.65A3.5 3.5 0 0 0 4 19'
+    people: 'M17 19a4 4 0 0 0-8 0m4-8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm5 8a3.5 3.5 0 0 0-2.5-3.35M6.5 15.65A3.5 3.5 0 0 0 4 19',
+    spark: 'M12 3l1.9 5.2L19 10l-5.1 1.8L12 17l-1.9-5.2L5 10l5.1-1.8L12 3Zm6 11 1 2.6 2.6 1-2.6 1-1 2.6-1-2.6-2.6-1 2.6-1 1-2.6Z'
   };
 
   return (
@@ -319,29 +320,30 @@ function Sidebar({ activeView, setActiveView, currentUser, onSignOut }) {
   ];
 
   return (
-    <aside className="flex min-h-0 w-full shrink-0 flex-row items-center gap-2 border-b border-white/10 bg-navy-950 px-3 py-3 text-white lg:w-[76px] lg:flex-col lg:border-b-0 lg:border-r lg:px-2 lg:py-4">
-      <div className="mr-auto lg:mx-0 lg:mb-4">
+    <aside className="flex min-h-0 w-full shrink-0 flex-row items-center gap-2 border-b border-white/10 bg-navy-950 px-3 py-3 text-white lg:w-[104px] lg:flex-col lg:border-b-0 lg:border-r lg:px-3 lg:py-4">
+      <div className="mr-auto lg:mx-0 lg:mb-5">
         <div className="hidden lg:block"><Brand compact inverted /></div>
         <div className="lg:hidden"><Brand inverted /></div>
       </div>
-      <nav className="flex gap-1 lg:flex-col">
+      <nav className="flex gap-1 lg:w-full lg:flex-col lg:gap-2">
         {nav.map(([label, icon]) => (
           <button
             key={label}
             className={cx(
-              'grid h-10 w-10 place-items-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white',
-              activeView === label && 'bg-cyanbrand-500 text-navy-950 hover:bg-cyanbrand-400 hover:text-navy-950'
+              'flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-slate-400 transition hover:bg-white/10 hover:text-white lg:h-auto lg:w-full lg:flex-col lg:py-3',
+              activeView === label && 'bg-cyanbrand-500 text-navy-950 shadow-lg shadow-cyanbrand-500/20 hover:bg-cyanbrand-400 hover:text-navy-950'
             )}
             onClick={() => setActiveView(label)}
             title={label}
             type="button"
           >
             <Icon name={icon} />
+            <span className="hidden text-[10px] font-extrabold uppercase tracking-[0.08em] lg:block">{label === 'Team Chat' ? 'Team' : 'Inbox'}</span>
           </button>
         ))}
       </nav>
       <div className="ml-auto flex items-center gap-2 lg:ml-0 lg:mt-auto lg:flex-col">
-        <span className="hidden min-w-0 text-right lg:grid lg:h-10 lg:w-10 lg:place-items-center lg:rounded-xl lg:bg-white/10 lg:text-xs lg:font-extrabold lg:text-cyanbrand-400" title={currentUser?.email}>
+        <span className="hidden min-w-0 text-right lg:grid lg:h-11 lg:w-11 lg:place-items-center lg:rounded-xl lg:bg-white/10 lg:text-xs lg:font-extrabold lg:text-cyanbrand-400" title={currentUser?.email}>
           {initials(currentUser?.name)}
         </span>
         <button className="grid h-10 w-10 place-items-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white" onClick={onSignOut} title="Sign out" type="button">
@@ -354,8 +356,8 @@ function Sidebar({ activeView, setActiveView, currentUser, onSignOut }) {
 
 function Metric({ label, value, icon }) {
   return (
-    <div className="flex min-w-[138px] items-center gap-3 border-r border-slate-200 px-4 py-3 last:border-r-0">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-cyan-100 bg-cyan-50 text-cyan-700">
+    <div className="flex min-w-[132px] items-center gap-3 border-r border-slate-200 px-4 py-3 last:border-r-0">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-cyan-100 bg-cyan-50 text-cyan-700">
         <Icon name={icon} />
       </span>
       <div className="min-w-0">
@@ -369,9 +371,14 @@ function Metric({ label, value, icon }) {
 function ConversationList({ conversations, activeId, setActiveId }) {
   if (!conversations.length) {
     return (
-      <div className="p-8 text-center">
-        <p className="font-bold text-ink">No conversations found</p>
-        <p className="mt-1 text-sm text-slate-500">Adjust the filters to bring messages back into view.</p>
+      <div className="grid min-h-[320px] place-items-center p-6 text-center">
+        <div className="max-w-[240px]">
+          <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-cyan-100 bg-cyan-50 text-cyan-700">
+            <Icon name="inbox" />
+          </span>
+          <p className="mt-4 font-extrabold text-ink">No conversations yet</p>
+          <p className="mt-1 text-sm leading-6 text-slate-500">New website chats will arrive here in realtime.</p>
+        </div>
       </div>
     );
   }
@@ -382,14 +389,14 @@ function ConversationList({ conversations, activeId, setActiveId }) {
         <button
           key={conversation.id}
           className={cx(
-            'block w-full border-b border-slate-100 px-4 py-4 text-left transition hover:bg-slate-50',
-            activeId === conversation.id && 'bg-cyan-50/70 hover:bg-cyan-50'
+            'group block w-full border-b border-slate-100 px-4 py-4 text-left transition hover:bg-slate-50',
+            activeId === conversation.id && 'bg-cyan-50/80 shadow-[inset_3px_0_0_#13c8de] hover:bg-cyan-50'
           )}
           onClick={() => setActiveId(conversation.id)}
           type="button"
         >
           <div className="flex items-start gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-navy-950 text-xs font-extrabold text-cyanbrand-400">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-navy-950 text-xs font-extrabold text-cyanbrand-400 shadow-sm transition group-hover:scale-[1.02]">
               {initials(conversation.customer)}
             </span>
             <span className="min-w-0 flex-1">
@@ -398,6 +405,7 @@ function ConversationList({ conversations, activeId, setActiveId }) {
                 <span className="shrink-0 text-xs font-semibold text-slate-400">{conversation.lastSeen}</span>
               </span>
               <span className="mt-1 block truncate text-sm font-semibold text-slate-700">{conversation.subject}</span>
+              <span className="mt-1 block truncate text-xs font-semibold text-slate-400">{conversation.company} · {conversation.assignee}</span>
               <span className="mt-2 flex flex-wrap items-center gap-1.5">
                 <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-slate-600">{conversation.channel}</span>
                 <span className={cx('rounded-full border px-2 py-1 text-[11px] font-bold', toneClass[conversation.status])}>{conversation.status}</span>
@@ -408,6 +416,30 @@ function ConversationList({ conversations, activeId, setActiveId }) {
         </button>
       ))}
     </div>
+  );
+}
+
+function EmptyInbox({ setActiveView }) {
+  return (
+    <section className="flex min-h-0 flex-1 items-center justify-center bg-slate-50 px-6 py-10">
+      <div className="max-w-md text-center">
+        <span className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-navy-950 text-cyanbrand-400 shadow-card">
+          <Icon name="spark" />
+        </span>
+        <h1 className="mt-5 text-2xl font-extrabold tracking-tight text-ink">Ready for the first customer chat</h1>
+        <p className="mt-3 text-sm leading-7 text-slate-500">
+          Website conversations will show here as soon as visitors start chatting. Your team can assign, reply, resolve, and convert qualified chats into CRM leads.
+        </p>
+        <button
+          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-navy-800"
+          onClick={() => setActiveView('Team Chat')}
+          type="button"
+        >
+          <Icon name="people" />
+          Open team room
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -599,14 +631,20 @@ function Thread({ conversation, convertingLeadId, currentUser, onAssignToMe, onC
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-white">
-      <header className="border-b border-slate-200 px-4 py-4 sm:px-5">
+      <header className="border-b border-slate-200 bg-white px-4 py-4 sm:px-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-navy-950 text-sm font-extrabold text-cyanbrand-400 shadow-sm">
+              {initials(conversation.customer)}
+            </span>
+            <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="truncate text-lg font-extrabold tracking-tight text-ink sm:text-xl">{conversation.subject}</h1>
               <span className={cx('rounded-full border px-2.5 py-1 text-xs font-extrabold', toneClass[conversation.status])}>{conversation.status}</span>
             </div>
-            <p className="mt-1 text-sm text-slate-500">{conversation.customer} from {conversation.company} via {conversation.channel}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-600">{conversation.customer}</p>
+              <p className="mt-0.5 text-xs font-semibold text-slate-400">{conversation.company} · {conversation.channel} · {conversation.email}</p>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -669,14 +707,15 @@ function Thread({ conversation, convertingLeadId, currentUser, onAssignToMe, onC
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50 px-4 py-5 sm:px-6">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,#f8fafc,#eef6f9)] px-4 py-5 sm:px-6">
+        <div className="mx-auto max-w-4xl space-y-4">
         {conversation.messages.map((message) => (
           <div key={message.id} className={cx('flex', message.type === 'agent' && 'justify-end', message.type === 'note' && 'justify-center')}>
             <article
               className={cx(
                 'max-w-[78%] rounded-2xl border px-4 py-3 shadow-sm',
-                message.type === 'customer' && 'border-slate-200 bg-white text-slate-800',
-                message.type === 'agent' && 'border-cyan-100 bg-cyan-50 text-ink',
+                message.type === 'customer' && 'rounded-tl-md border-slate-200 bg-white text-slate-800',
+                message.type === 'agent' && 'rounded-tr-md border-cyan-100 bg-cyan-50 text-ink',
                 message.type === 'note' && 'max-w-[92%] border-amber-100 bg-amber-50 text-amber-900'
               )}
             >
@@ -689,6 +728,7 @@ function Thread({ conversation, convertingLeadId, currentUser, onAssignToMe, onC
             </article>
           </div>
         ))}
+        </div>
       </div>
 
       <footer className="border-t border-slate-200 bg-white p-4">
@@ -718,7 +758,7 @@ function Thread({ conversation, convertingLeadId, currentUser, onAssignToMe, onC
             ))}
           </div>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-card">
           <textarea
             className="min-h-24 w-full resize-none border-0 text-sm leading-6 text-ink outline-none placeholder:text-slate-400"
             disabled={isResolved && mode === 'Reply'}
@@ -904,7 +944,7 @@ function TeamChat({
           <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-cyan-700">Internal team only</p>
           <h1 className="mt-1 text-xl font-extrabold tracking-tight text-ink">Team chat</h1>
           <p className="mt-1 text-sm text-slate-500">Clients never see this area.</p>
-          <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
+          <div className="mt-3 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
             <span className="text-xs font-bold text-slate-500">{onlineCount} online</span>
             <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-extrabold text-emerald-700">
               {isSupabaseConfigured ? 'Realtime' : 'Local demo'}
@@ -915,8 +955,8 @@ function TeamChat({
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
           <button
             className={cx(
-              'mb-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-50',
-              selectedTeamChat === 'room' && 'bg-cyan-50 hover:bg-cyan-50'
+              'mb-2 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50',
+              selectedTeamChat === 'room' && 'bg-cyan-50 shadow-[inset_3px_0_0_#13c8de] hover:bg-cyan-50'
             )}
             onClick={() => setSelectedTeamChat('room')}
             type="button"
@@ -935,8 +975,8 @@ function TeamChat({
             return (
               <button
                 className={cx(
-                  'flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-50',
-                  selectedTeamChat === profile.id && 'bg-cyan-50 hover:bg-cyan-50'
+                  'flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50',
+                  selectedTeamChat === profile.id && 'bg-cyan-50 shadow-[inset_3px_0_0_#13c8de] hover:bg-cyan-50'
                 )}
                 key={profile.id}
                 onClick={() => setSelectedTeamChat(profile.id)}
@@ -971,7 +1011,7 @@ function TeamChat({
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-5 sm:px-6">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,#f8fafc,#eef6f9)] px-4 py-5 sm:px-6">
           <div className="mx-auto max-w-4xl space-y-4">
             {visibleMessages.length ? visibleMessages.map((message) => {
               const own = selectedProfile
@@ -992,8 +1032,11 @@ function TeamChat({
                 </div>
               );
             }) : (
-              <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center">
-                <p className="font-extrabold text-ink">No messages yet</p>
+              <div className="rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center shadow-sm">
+                <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-cyan-50 text-cyan-700">
+                  <Icon name={selectedProfile ? 'chat' : 'people'} />
+                </span>
+                <p className="mt-4 font-extrabold text-ink">No messages yet</p>
                 <p className="mt-1 text-sm text-slate-500">Start the conversation from the box below.</p>
               </div>
             )}
@@ -1003,7 +1046,7 @@ function TeamChat({
         <footer className="border-t border-slate-200 bg-white p-4">
           <div className="mx-auto max-w-4xl">
             {error ? <p className="mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">{error}</p> : null}
-            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-card">
               <textarea
                 className="min-h-20 w-full resize-none border-0 text-sm leading-6 text-ink outline-none placeholder:text-slate-400"
                 onChange={(event) => setDraft(event.target.value)}
@@ -1355,7 +1398,7 @@ export default function ChatApp() {
   }
 
   return (
-    <main className="chat-shell flex min-h-screen flex-col lg:flex-row">
+    <main className="chat-shell flex min-h-screen flex-col text-ink lg:flex-row">
       <Sidebar activeView={activeView} currentUser={currentUser} onSignOut={signOut} setActiveView={setActiveView} />
 
       <section className="flex min-h-0 flex-1 flex-col">
@@ -1364,6 +1407,7 @@ export default function ChatApp() {
             <div>
               <p className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-cyan-700">{activeView}</p>
               <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-ink">{activeView === 'Team Chat' ? 'Internal team chat' : 'Customer conversations'}</h2>
+              <p className="mt-1 text-sm font-medium text-slate-500">{activeView === 'Team Chat' ? 'Coordinate privately with the YalaByte team.' : 'Reply, assign, resolve, and convert website chats.'}</p>
             </div>
             <div className={cx('overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm', activeView === 'Team Chat' ? 'hidden lg:flex' : 'flex')}>
               <Metric label="Open" value={openCount} icon="chat" />
@@ -1390,7 +1434,7 @@ export default function ChatApp() {
           </div>
         ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-white/80 bg-white/70 lg:flex-row">
-          <aside className="flex h-[42vh] shrink-0 flex-col border-b border-slate-200 bg-white lg:h-auto lg:w-[390px] lg:border-b-0 lg:border-r">
+          <aside className="flex h-[42vh] shrink-0 flex-col border-b border-slate-200 bg-white lg:h-auto lg:w-[380px] lg:border-b-0 lg:border-r">
             <div className="border-b border-slate-200 p-4">
               {websiteChatError ? (
                 <p className="mb-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
@@ -1447,7 +1491,9 @@ export default function ChatApp() {
                 updateConversation={updateConversation}
               />
             </>
-          ) : null}
+          ) : (
+            <EmptyInbox setActiveView={setActiveView} />
+          )}
         </div>
         )}
       </section>
