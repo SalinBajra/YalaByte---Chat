@@ -26,6 +26,7 @@ const TEAM_MESSAGES_KEY = 'yalabyte-chat-team-messages';
 const defaultAssignmentOptions = ['Unassigned'];
 const statuses = ['Open', 'Pending', 'Resolved'];
 const channels = ['All', 'Website', 'Messenger', 'WhatsApp', 'Email'];
+const RESOLVED_INBOX_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const seedConversations = [
   {
@@ -221,6 +222,22 @@ function relativeTime(value) {
   return 'Earlier';
 }
 
+function resolvedTime(conversation) {
+  return conversation.resolvedAt || conversation.endedAt || '';
+}
+
+function isResolvedPastResolvedWindow(conversation) {
+  if (conversation.status !== 'Resolved') return false;
+  const value = resolvedTime(conversation);
+  if (!value) return false;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && Date.now() - time > RESOLVED_INBOX_WINDOW_MS;
+}
+
+function isRecentlyResolved(conversation) {
+  return conversation.status === 'Resolved' && !isResolvedPastResolvedWindow(conversation);
+}
+
 function profileName(profile) {
   return profile?.full_name || profile?.name || profile?.email?.split('@')[0] || 'Team member';
 }
@@ -243,6 +260,7 @@ function mapWebsiteConversation(item) {
     phone: item.customer_phone || '',
     convertedLeadId: item.converted_lead_id || '',
     convertedAt: item.converted_at || '',
+    resolvedAt: item.resolved_at || '',
     endedAt: item.ended_at || '',
     endedBy: item.ended_by || '',
     endReason: item.end_reason || '',
@@ -368,7 +386,13 @@ function Metric({ label, value, icon }) {
   );
 }
 
-function ConversationList({ conversations, activeId, setActiveId }) {
+function ConversationList({ conversations, activeId, setActiveId, view = 'Inbox' }) {
+  const emptyCopy = {
+    Inbox: ['No active conversations', 'Open and pending website chats will arrive here in realtime.'],
+    Resolved: ['No recent resolved chats', 'Resolved conversations stay here for 24 hours before moving to history.'],
+    History: ['No resolved history yet', 'Resolved conversations older than 24 hours will be kept here.']
+  }[view] || ['No conversations found', 'Adjust the filters to bring messages back into view.'];
+
   if (!conversations.length) {
     return (
       <div className="grid min-h-[320px] place-items-center p-6 text-center">
@@ -376,8 +400,8 @@ function ConversationList({ conversations, activeId, setActiveId }) {
           <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-cyan-100 bg-cyan-50 text-cyan-700">
             <Icon name="inbox" />
           </span>
-          <p className="mt-4 font-extrabold text-ink">No conversations yet</p>
-          <p className="mt-1 text-sm leading-6 text-slate-500">New website chats will arrive here in realtime.</p>
+          <p className="mt-4 font-extrabold text-ink">{emptyCopy[0]}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-500">{emptyCopy[1]}</p>
         </div>
       </div>
     );
@@ -1081,6 +1105,7 @@ export default function ChatApp() {
   const [websiteConversations, setWebsiteConversations] = useState([]);
   const [activeId, setActiveId] = useState('');
   const [query, setQuery] = useState('');
+  const [conversationView, setConversationView] = useState('Inbox');
   const [status, setStatus] = useState('Open');
   const [channel, setChannel] = useState('All');
   const [draft, setDraft] = useState('');
@@ -1231,14 +1256,19 @@ export default function ChatApp() {
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase();
     return inboxConversations.filter((conversation) => {
-      const matchesStatus = status === 'All' || conversation.status === status;
+      const matchesView = (
+        (conversationView === 'Inbox' && conversation.status !== 'Resolved')
+        || (conversationView === 'Resolved' && isRecentlyResolved(conversation))
+        || (conversationView === 'History' && conversation.status === 'Resolved' && isResolvedPastResolvedWindow(conversation))
+      );
+      const matchesStatus = conversationView !== 'Inbox' || status === 'All' || conversation.status === status;
       const matchesChannel = channel === 'All' || conversation.channel === channel;
       const text = `${conversation.customer} ${conversation.company} ${conversation.subject} ${conversation.email}`.toLowerCase();
-      return matchesStatus && matchesChannel && (!search || text.includes(search));
+      return matchesView && matchesStatus && matchesChannel && (!search || text.includes(search));
     });
-  }, [channel, inboxConversations, query, status]);
+  }, [channel, conversationView, inboxConversations, query, status]);
 
-  const activeConversation = inboxConversations.find((conversation) => conversation.id === activeId) || filtered[0] || inboxConversations[0];
+  const activeConversation = filtered.find((conversation) => conversation.id === activeId) || filtered[0] || null;
 
   function patchConversationInView(id, changes) {
     setConversations((items) => items.map((item) => (item.id === id ? { ...item, ...changes } : item)));
@@ -1249,7 +1279,17 @@ export default function ChatApp() {
     const conversation = inboxConversations.find((item) => item.id === id);
     if (!conversation) return;
     const previous = conversation;
-    patchConversationInView(id, changes);
+    const viewChanges = { ...changes };
+    if (changes.status === 'Resolved' && !viewChanges.resolvedAt) {
+      viewChanges.resolvedAt = new Date().toISOString();
+    }
+    if (changes.status === 'Open' || changes.status === 'Pending') {
+      viewChanges.resolvedAt = '';
+      viewChanges.endedAt = '';
+      viewChanges.endedBy = '';
+      viewChanges.endReason = '';
+    }
+    patchConversationInView(id, viewChanges);
 
     if (conversation.sourceType !== 'website-chat' || !supabase) return;
 
@@ -1267,7 +1307,9 @@ export default function ChatApp() {
 
   function resolveConversation() {
     if (!activeConversation) return;
-    updateConversation(activeConversation.id, { status: 'Resolved' });
+    updateConversation(activeConversation.id, { status: 'Resolved', resolvedAt: new Date().toISOString() });
+    setConversationView('Resolved');
+    setStatus('All');
   }
 
   function pendingConversation() {
@@ -1380,7 +1422,8 @@ export default function ChatApp() {
 
   const openCount = inboxConversations.filter((conversation) => conversation.status === 'Open').length;
   const pendingCount = inboxConversations.filter((conversation) => conversation.status === 'Pending').length;
-  const unassignedCount = inboxConversations.filter((conversation) => conversation.assignee === 'Unassigned').length;
+  const recentResolvedCount = inboxConversations.filter(isRecentlyResolved).length;
+  const historyCount = inboxConversations.filter((conversation) => conversation.status === 'Resolved' && isResolvedPastResolvedWindow(conversation)).length;
 
   if (!authReady) {
     return (
@@ -1412,7 +1455,8 @@ export default function ChatApp() {
             <div className={cx('overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm', activeView === 'Team Chat' ? 'hidden lg:flex' : 'flex')}>
               <Metric label="Open" value={openCount} icon="chat" />
               <Metric label="Pending" value={pendingCount} icon="clock" />
-              <Metric label="Unassigned" value={unassignedCount} icon="user" />
+              <Metric label="Resolved" value={recentResolvedCount} icon="check" />
+              <Metric label="History" value={historyCount} icon="inbox" />
             </div>
           </div>
         </header>
@@ -1450,10 +1494,36 @@ export default function ChatApp() {
                   value={query}
                 />
               </div>
+              <div className="mt-3 grid grid-cols-3 rounded-xl bg-slate-100 p-1">
+                {[
+                  ['Inbox', openCount + pendingCount],
+                  ['Resolved', recentResolvedCount],
+                  ['History', historyCount]
+                ].map(([item, count]) => (
+                  <button
+                    className={cx(
+                      'rounded-lg px-2 py-2 text-xs font-extrabold transition',
+                      conversationView === item ? 'bg-white text-ink shadow-sm' : 'text-slate-500 hover:text-ink'
+                    )}
+                    key={item}
+                    onClick={() => {
+                      setConversationView(item);
+                      setActiveId('');
+                      if (item !== 'Inbox') setStatus('All');
+                    }}
+                    type="button"
+                  >
+                    {item} <span className="text-slate-400">{count}</span>
+                  </button>
+                ))}
+              </div>
               <div className="mt-3 flex gap-2">
-                <label className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">
+                <label className={cx(
+                  'flex flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700',
+                  conversationView !== 'Inbox' && 'opacity-50'
+                )}>
                   <Icon name="filter" />
-                  <select className="min-w-0 flex-1 border-0 bg-transparent outline-none" onChange={(event) => setStatus(event.target.value)} value={status}>
+                  <select className="min-w-0 flex-1 border-0 bg-transparent outline-none" disabled={conversationView !== 'Inbox'} onChange={(event) => setStatus(event.target.value)} value={status}>
                     {['All', ...statuses].map((item) => <option key={item}>{item}</option>)}
                   </select>
                 </label>
@@ -1462,7 +1532,7 @@ export default function ChatApp() {
                 </select>
               </div>
             </div>
-            <ConversationList conversations={filtered} activeId={activeConversation?.id} setActiveId={setActiveId} />
+            <ConversationList conversations={filtered} activeId={activeConversation?.id} setActiveId={setActiveId} view={conversationView} />
           </aside>
 
           {activeConversation ? (

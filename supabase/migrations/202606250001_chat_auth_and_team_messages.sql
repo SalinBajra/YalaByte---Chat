@@ -49,6 +49,7 @@ create table if not exists public.website_chat_conversations (
   assigned_to_name text not null default '',
   converted_lead_id text references public.leads(id) on delete set null,
   converted_at timestamptz,
+  resolved_at timestamptz,
   ended_at timestamptz,
   ended_by text not null default '' check (ended_by in ('', 'client', 'team')),
   end_reason text not null default '',
@@ -73,6 +74,7 @@ alter table public.website_chat_conversations
   add column if not exists customer_company text not null default '',
   add column if not exists converted_lead_id text references public.leads(id) on delete set null,
   add column if not exists converted_at timestamptz,
+  add column if not exists resolved_at timestamptz,
   add column if not exists ended_at timestamptz,
   add column if not exists ended_by text not null default '',
   add column if not exists end_reason text not null default '';
@@ -234,6 +236,9 @@ create index if not exists team_direct_messages_participants_created_idx
 
 create index if not exists website_chat_conversations_last_activity_idx
   on public.website_chat_conversations(last_activity_at desc);
+
+create index if not exists website_chat_conversations_resolved_at_idx
+  on public.website_chat_conversations(resolved_at desc);
 
 create index if not exists website_chat_messages_conversation_created_idx
   on public.website_chat_messages(conversation_id, created_at);
